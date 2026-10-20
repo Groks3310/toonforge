@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Copy, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Copy, Heart, HeartOff, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { createCharacter, loadCharacters, saveCharacters } from '../../lib/character-store.js'
 import './character-studio.css'
 
@@ -53,6 +53,19 @@ export function CharacterStudio() {
     [characters, selectedId],
   )
 
+  const orderedCharacters = useMemo(
+    function sortByFavorite() {
+      return [...characters].sort((left, right) => {
+        const favoriteDiff = Number(right.favorite) - Number(left.favorite)
+        if (favoriteDiff !== 0) {
+          return favoriteDiff
+        }
+        return (left.name || '').localeCompare(right.name || '')
+      })
+    },
+    [characters],
+  )
+
   function updateSelected(field, value) {
     if (!selectedCharacter) {
       return
@@ -89,6 +102,13 @@ export function CharacterStudio() {
       return [duplicate, ...current]
     })
     setSelectedId(duplicate.id)
+  }
+
+  function toggleFavorite() {
+    if (!selectedCharacter) {
+      return
+    }
+    updateSelected('favorite', !selectedCharacter.favorite)
   }
 
   function removeCharacter(characterId) {
@@ -131,7 +151,7 @@ export function CharacterStudio() {
           </div>
 
           <div className="character-gallery">
-            {characters.map((character) => {
+            {orderedCharacters.map((character) => {
               const active = character.id === selectedCharacter.id
               return (
                 <button
@@ -151,6 +171,11 @@ export function CharacterStudio() {
                     <strong>{character.name}</strong>
                     <small>{character.expression}</small>
                   </div>
+                  {character.favorite ? (
+                    <span className="favorite-indicator is-favorite" aria-label="Favorite character">
+                      <Heart size={14} fill="currentColor" />
+                    </span>
+                  ) : null}
                 </button>
               )
             })}
@@ -171,6 +196,10 @@ export function CharacterStudio() {
               />
             </div>
             <div className="quick-actions">
+              <button type="button" className="ghost-btn" onClick={toggleFavorite}>
+                {selectedCharacter.favorite ? <HeartOff size={14} /> : <Heart size={14} />}
+                {selectedCharacter.favorite ? 'Unfavorite' : 'Favorite'}
+              </button>
               <button
                 type="button"
                 className="ghost-btn"
@@ -196,7 +225,16 @@ export function CharacterStudio() {
             <div className={`character-preview expression-${selectedCharacter.expression} body-${selectedCharacter.body}`}>
               <div className="character-scene">
                 <div className="character-shadow" />
-                <div className="character-figure" style={{ '--skin-tone': selectedCharacter.skinTone, '--hair-color': selectedCharacter.hairColor, '--eye-color': selectedCharacter.eyeColor, '--outfit-color': selectedCharacter.outfitColor, '--accent-color': selectedCharacter.accentColor }}>
+                <div
+                  className="character-figure"
+                  style={{
+                    '--skin-tone': selectedCharacter.skinTone,
+                    '--hair-color': selectedCharacter.hairColor,
+                    '--eye-color': selectedCharacter.eyeColor,
+                    '--outfit-color': selectedCharacter.outfitColor,
+                    '--accent-color': selectedCharacter.accentColor,
+                  }}
+                >
                   <div className="character-hair" />
                   <div className="character-head">
                     <div className="character-eye left" />
@@ -353,3 +391,4 @@ export function CharacterStudio() {
     </div>
   )
 }
+

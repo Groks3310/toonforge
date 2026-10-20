@@ -1,4 +1,4 @@
-@import '../../styles/index.css';
+@import '../styles/index.css';
 
 .character-studio {
   display: flex;
@@ -93,6 +93,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .character-card-copy strong {
@@ -102,6 +104,20 @@
 .character-card-copy small {
   text-transform: capitalize;
   color: var(--text-muted);
+}
+
+.favorite-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.favorite-indicator.is-favorite {
+  color: var(--gold);
 }
 
 .character-main-panel {
@@ -425,3 +441,4 @@
     align-items: stretch;
   }
 }
+
