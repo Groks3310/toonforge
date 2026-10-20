@@ -3,13 +3,18 @@ import { Download, RotateCcw, RotateCw, Trash2, Upload } from 'lucide-react'
 import {
   ACCEPTED_TYPES,
   CARTOON_STYLES,
+  EXPORT_FORMATS,
   applyCartoon,
-  canvasToBlob,
+  compositeBackground,
   drawFramed,
   getStyleDefaults,
   loadImageFromFile,
+  renderExport,
   validateImageFile,
 } from '../../lib/image-processing/cartoon.js'
+import { BackgroundControls } from './BackgroundControls.jsx'
+import { ExportControls } from './ExportControls.jsx'
+import './cartoon-studio.css'
 
 const ACCEPT = ACCEPTED_TYPES.join(',')
 
@@ -32,6 +37,19 @@ export function CartoonStudio() {
   const [resultUrl, setResultUrl] = useState('')
   const [framedUrl, setFramedUrl] = useState('')
   const [busy, setBusy] = useState(false)
+  const [removeBackdrop, setRemoveBackdrop] = useState(false)
+  const [tolerance, setTolerance] = useState(40)
+  const [background, setBackground] = useState({
+    type: 'none',
+    color: '#f4d35e',
+    color2: '#ee6c4d',
+    direction: 'vertical',
+  })
+  const [backgroundImage, setBackgroundImage] = useState(null)
+  const [exportFormat, setExportFormat] = useState('png')
+  const [exportQuality, setExportQuality] = useState(92)
+  const [cartoonVersion, setCartoonVersion] = useState(0)
+  const cartoonRef = useRef(null)
 
   useEffect(function cleanupSource() {
     return function revoke() {
@@ -76,6 +94,8 @@ export function CartoonStudio() {
           contrast,
           rotation,
           zoom,
+          removeBackground: removeBackdrop,
+          backdropTolerance: tolerance,
         })
         frame.canvas.toBlob(function framedDone(blob) {
           if (cancelled || !blob) {
@@ -89,7 +109,39 @@ export function CartoonStudio() {
             return url
           })
         }, 'image/png')
-        canvas.toBlob(function done(blob) {
+        cartoonRef.current = canvas
+        setCartoonVersion(function next(version) {
+          return version + 1
+        })
+      } catch (problem) {
+        if (!cancelled) {
+          setError(problem.message || 'Processing failed.')
+          setBusy(false)
+        }
+      }
+    }, 180)
+
+    return function cleanup() {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [source, style, smooth, edge, levels, saturation, contrast, rotation, zoom, removeBackdrop, tolerance])
+
+  // Background changes only redraw the cached cartoon, so they stay fast.
+  useEffect(function renderComposite() {
+    const cartoon = cartoonRef.current
+    if (!cartoon) {
+      return undefined
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(function run() {
+      try {
+        const composed = compositeBackground(cartoon, {
+          ...background,
+          image: backgroundImage ? backgroundImage.image : null,
+        })
+        composed.toBlob(function done(blob) {
           if (cancelled) {
             return
           }
@@ -109,17 +161,17 @@ export function CartoonStudio() {
         }, 'image/png')
       } catch (problem) {
         if (!cancelled) {
-          setError(problem.message || 'Processing failed.')
+          setError(problem.message || 'Could not draw the background.')
           setBusy(false)
         }
       }
-    }, 180)
+    }, 60)
 
     return function cleanup() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [source, style, smooth, edge, levels, saturation, contrast, rotation, zoom])
+  }, [cartoonVersion, background, backgroundImage])
 
   useEffect(function watchCompareSize() {
     const node = compareRef.current
@@ -187,7 +239,32 @@ export function CartoonStudio() {
     setContrast(defaults.contrast)
   }
 
+  function changeBackground(patch) {
+    setBackground(function merge(previous) {
+      return { ...previous, ...patch }
+    })
+  }
+
+  async function handleBackgroundImage(file) {
+    const message = validateImageFile(file)
+    if (message) {
+      setError(message)
+      return
+    }
+    setError('')
+    try {
+      const loaded = await loadImageFromFile(file)
+      // The decoded image stays usable after the temporary URL is released.
+      URL.revokeObjectURL(loaded.objectUrl)
+      setBackgroundImage({ image: loaded.image, name: file.name })
+      changeBackground({ type: 'image' })
+    } catch (problem) {
+      setError(problem.message)
+    }
+  }
+
   function clearImage() {
+    cartoonRef.current = null
     setSource(function replace(previous) {
       if (previous?.objectUrl) {
         URL.revokeObjectURL(previous.objectUrl)
@@ -208,12 +285,13 @@ export function CartoonStudio() {
     })
   }
 
-  async function downloadPng() {
+  async function downloadImage() {
     if (!source?.image) {
       return
     }
+    setError('')
     try {
-      const canvas = applyCartoon(source.image, {
+      const cartoon = applyCartoon(source.image, {
         style,
         smooth,
         edge,
@@ -222,20 +300,32 @@ export function CartoonStudio() {
         contrast,
         rotation,
         zoom,
+        removeBackground: removeBackdrop,
+        backdropTolerance: tolerance,
         maxSize: 1920,
       })
-      const blob = await canvasToBlob(canvas, 'image/png')
+      const composed = compositeBackground(cartoon, {
+        ...background,
+        image: backgroundImage ? backgroundImage.image : null,
+      })
+      const { blob, extension } = await renderExport(composed, exportFormat, exportQuality / 100)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       const base = (source.name || 'cartoon').replace(/\.[^.]+$/, '')
       link.href = url
-      link.download = `${base}-toonforge.png`
+      link.download = `${base}-toonforge.${extension}`
       link.click()
-      URL.revokeObjectURL(url)
+      window.setTimeout(function release() {
+        URL.revokeObjectURL(url)
+      }, 1000)
     } catch (problem) {
       setError(problem.message)
     }
   }
+
+  const exportLabel = EXPORT_FORMATS.find(function find(item) {
+    return item.id === exportFormat
+  })?.label
 
   return (
     <div>
@@ -324,8 +414,8 @@ export function CartoonStudio() {
                 <button type="button" className="ghost-btn" onClick={clearImage}>
                   <Trash2 size={16} /> Remove
                 </button>
-                <button type="button" className="primary-btn" onClick={downloadPng} disabled={busy}>
-                  <Download size={16} /> Download PNG
+                <button type="button" className="primary-btn" onClick={downloadImage} disabled={busy}>
+                  <Download size={16} /> Download {exportLabel}
                 </button>
               </div>
               <p className="empty-copy">{busy ? 'Updating cartoon…' : 'Drag the slider to compare original and cartoon.'}</p>
@@ -393,6 +483,29 @@ export function CartoonStudio() {
             </span>
             <input type="range" min="1" max="2" step="0.05" value={zoom} onChange={function change(event) { setZoom(Number(event.target.value)) }} />
           </label>
+
+          <BackgroundControls
+            removeBackdrop={removeBackdrop}
+            tolerance={tolerance}
+            background={background}
+            backgroundImageName={backgroundImage ? backgroundImage.name : ''}
+            onRemoveBackdropChange={setRemoveBackdrop}
+            onToleranceChange={setTolerance}
+            onBackgroundChange={changeBackground}
+            onPickBackgroundImage={handleBackgroundImage}
+            onClearBackgroundImage={function clearBackgroundImage() {
+              setBackgroundImage(null)
+              changeBackground({ type: 'none' })
+            }}
+          />
+
+          <ExportControls
+            format={exportFormat}
+            quality={exportQuality}
+            mayBeTransparent={background.type === 'none'}
+            onFormatChange={setExportFormat}
+            onQualityChange={setExportQuality}
+          />
         </aside>
       </div>
     </div>
