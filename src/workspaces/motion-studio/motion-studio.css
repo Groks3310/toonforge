@@ -1,0 +1,200 @@
+.motion-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.motion-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 320px;
+  gap: 18px;
+}
+
+.motion-stage-panel,
+.motion-controls-panel {
+  min-height: 520px;
+}
+
+.motion-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 420px;
+  border-radius: 18px;
+  background: radial-gradient(circle at top, rgba(232, 195, 106, 0.12), transparent 30%), var(--bg-card);
+  overflow: hidden;
+}
+
+.motion-character {
+  --skin-tone: #f3c79b;
+  --hair-color: #2d1f1a;
+  --eye-color: #2a6f9d;
+  --outfit-color: #5f7cff;
+  --accent-color: #f3d36d;
+  --speed: 1;
+  position: relative;
+  width: 180px;
+  height: 250px;
+  animation: floatMotion var(--speed) ease-in-out infinite;
+}
+
+.motion-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  width: 150px;
+  height: 18px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+  filter: blur(8px);
+}
+
+.motion-hair {
+  position: absolute;
+  left: 46px;
+  top: 18px;
+  width: 88px;
+  height: 40px;
+  border-radius: 50% 50% 38% 38%;
+  background: var(--hair-color);
+}
+
+.motion-head {
+  position: absolute;
+  left: 40px;
+  top: 46px;
+  width: 96px;
+  height: 90px;
+  border-radius: 42% 42% 48% 48%;
+  background: var(--skin-tone);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.motion-eye {
+  position: absolute;
+  top: 34px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--eye-color);
+}
+
+.motion-eye.left { left: 22px; }
+.motion-eye.right { right: 22px; }
+
+.motion-mouth {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  width: 22px;
+  height: 12px;
+  border-bottom: 3px solid rgba(110, 52, 41, 0.9);
+  border-radius: 0 0 18px 18px;
+  transform: translateX(-50%);
+}
+
+.motion-body {
+  position: absolute;
+  left: 44px;
+  top: 118px;
+  width: 92px;
+  height: 90px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--outfit-color) 72%, white), var(--outfit-color));
+}
+
+.motion-arm,
+.motion-leg {
+  position: absolute;
+  border-radius: 999px;
+  background: var(--skin-tone);
+}
+
+.motion-arm {
+  top: 8px;
+  width: 18px;
+  height: 65px;
+}
+
+.motion-arm.left {
+  left: -12px;
+  transform-origin: top center;
+}
+
+.motion-arm.right {
+  right: -12px;
+  transform-origin: top center;
+}
+
+.motion-leg {
+  top: 90px;
+  width: 18px;
+  height: 68px;
+  background: var(--outfit-color);
+}
+
+.motion-leg.left { left: 18px; }
+.motion-leg.right { right: 18px; }
+
+.motion-idle .motion-arm.left { animation: idleLeftArm 1.5s ease-in-out infinite; }
+.motion-idle .motion-arm.right { animation: idleRightArm 1.5s ease-in-out infinite; }
+.motion-idle .motion-leg.left { animation: idleLeftLeg 1.5s ease-in-out infinite; }
+.motion-idle .motion-leg.right { animation: idleRightLeg 1.5s ease-in-out infinite; }
+
+.motion-wave .motion-arm.right { animation: waveArm 0.8s ease-in-out infinite; }
+.motion-wave .motion-body { transform: rotate(-2deg); }
+
+.motion-jump .motion-character { animation: jumpLoop calc(1.2s / var(--speed)) ease-in-out infinite; }
+
+.motion-run .motion-arm.left { animation: runArmLeft calc(0.5s / var(--speed)) ease-in-out infinite; }
+.motion-run .motion-arm.right { animation: runArmRight calc(0.5s / var(--speed)) ease-in-out infinite; }
+.motion-run .motion-leg.left { animation: runLegLeft calc(0.5s / var(--speed)) ease-in-out infinite; }
+.motion-run .motion-leg.right { animation: runLegRight calc(0.5s / var(--speed)) ease-in-out infinite; }
+
+.motion-sit .motion-body { transform: translateY(24px) scaleY(0.9); }
+.motion-sit .motion-leg.left { transform: rotate(36deg) translateY(10px); }
+.motion-sit .motion-leg.right { transform: rotate(-36deg) translateY(10px); }
+
+.motion-dance .motion-arm.left { animation: danceLeftArm calc(0.7s / var(--speed)) ease-in-out infinite; }
+.motion-dance .motion-arm.right { animation: danceRightArm calc(0.7s / var(--speed)) ease-in-out infinite; }
+.motion-dance .motion-leg.left { animation: danceLeftLeg calc(0.7s / var(--speed)) ease-in-out infinite; }
+.motion-dance .motion-leg.right { animation: danceRightLeg calc(0.7s / var(--speed)) ease-in-out infinite; }
+
+@keyframes floatMotion {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes idleLeftArm { 0%,100% { transform: rotate(18deg); } 50% { transform: rotate(-10deg); } }
+@keyframes idleRightArm { 0%,100% { transform: rotate(-18deg); } 50% { transform: rotate(10deg); } }
+@keyframes idleLeftLeg { 0%,100% { transform: rotate(8deg); } 50% { transform: rotate(-8deg); } }
+@keyframes idleRightLeg { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+
+@keyframes waveArm {
+  0%,100% { transform: rotate(-30deg); }
+  50% { transform: rotate(55deg); }
+}
+
+@keyframes jumpLoop {
+  0%,100% { transform: translateY(0) scale(1); }
+  35% { transform: translateY(-46px) scale(1.04); }
+  60% { transform: translateY(0) scale(0.98); }
+}
+
+@keyframes runArmLeft { 0%,100% { transform: rotate(48deg); } 50% { transform: rotate(-44deg); } }
+@keyframes runArmRight { 0%,100% { transform: rotate(-48deg); } 50% { transform: rotate(44deg); } }
+@keyframes runLegLeft { 0%,100% { transform: rotate(-35deg); } 50% { transform: rotate(36deg); } }
+@keyframes runLegRight { 0%,100% { transform: rotate(35deg); } 50% { transform: rotate(-36deg); } }
+
+@keyframes danceLeftArm { 0%,100% { transform: rotate(20deg); } 50% { transform: rotate(-70deg); } }
+@keyframes danceRightArm { 0%,100% { transform: rotate(-20deg); } 50% { transform: rotate(70deg); } }
+@keyframes danceLeftLeg { 0%,100% { transform: rotate(-25deg); } 50% { transform: rotate(28deg); } }
+@keyframes danceRightLeg { 0%,100% { transform: rotate(25deg); } 50% { transform: rotate(-28deg); } }
+
+@media (max-width: 860px) {
+  .motion-layout {
+    grid-template-columns: 1fr;
+  }
+}

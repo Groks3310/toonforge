@@ -16,17 +16,17 @@ const SHORTCUTS = [
     ready: true,
   },
   {
+    id: 'motion',
+    title: 'Animate Movement',
+    body: 'Preview simple character motions and movement loops in real time.',
+    icon: PersonStanding,
+    ready: true,
+  },
+  {
     id: 'talking',
     title: 'Make It Talk',
     body: 'Voice and mouth animation come after Character Studio.',
     icon: Mic,
-    ready: false,
-  },
-  {
-    id: 'motion',
-    title: 'Animate Movement',
-    body: 'Walk, dance, and wave need a rigged character and real clips.',
-    icon: PersonStanding,
     ready: false,
   },
   {

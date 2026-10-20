@@ -3,16 +3,13 @@ import { AppShell } from './components/layout/AppShell.jsx'
 import { Dashboard } from './workspaces/dashboard/Dashboard.jsx'
 import { CartoonStudio } from './workspaces/cartoon-studio/CartoonStudio.jsx'
 import { CharacterStudio } from './workspaces/character-studio/CharacterStudio.jsx'
+import { MotionStudio } from './workspaces/motion-studio/MotionStudio.jsx'
 import { ComingSoon } from './workspaces/coming-soon/ComingSoon.jsx'
 
 const COMING_SOON = {
   talking: {
     title: 'Talking Studio',
     body: 'Characters will speak with the browser’s built-in speech synthesis and optional microphone recordings. Lip-sync starts after a character can be displayed.',
-  },
-  motion: {
-    title: 'Motion Studio',
-    body: 'Walk, wave, and other clips need a rigged character. We will not pretend those animations exist until we import real, licensed clips.',
   },
   story: {
     title: 'Story Studio',
@@ -52,6 +49,8 @@ export default function App() {
     content = <CartoonStudio />
   } else if (workspace === 'character') {
     content = <CharacterStudio />
+  } else if (workspace === 'motion') {
+    content = <MotionStudio />
   } else if (COMING_SOON[workspace]) {
     content = <ComingSoon {...COMING_SOON[workspace]} />
   }
