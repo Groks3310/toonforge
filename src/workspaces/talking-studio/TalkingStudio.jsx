@@ -1,232 +1,346 @@
-@import '../../styles/index.css';
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Mic, MicOff, Play, Square, Volume2 } from 'lucide-react'
+import { loadCharacters } from '../../lib/character-store.js'
+import './talking-studio.css'
 
-.talking-studio {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
+const DEFAULT_TEXT = 'Hello! I am ready to tell my story with ToonForge.'
 
-.talking-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) 360px;
-  gap: 18px;
-}
+export function TalkingStudio() {
+  const [characters, setCharacters] = useState(function load() {
+    return loadCharacters()
+  })
+  const [selectedCharacterId, setSelectedCharacterId] = useState('')
+  const [dialogue, setDialogue] = useState(DEFAULT_TEXT)
+  const [voiceIndex, setVoiceIndex] = useState(0)
+  const [voices, setVoices] = useState([])
+  const [rate, setRate] = useState(1)
+  const [pitch, setPitch] = useState(1)
+  const [volume, setVolume] = useState(1)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingError, setRecordingError] = useState('')
+  const [recordedUrl, setRecordedUrl] = useState('')
+  const [recordingState, setRecordingState] = useState('Ready to record')
 
-.talking-stage-panel,
-.talking-controls-panel {
-  min-height: 540px;
-}
+  const mediaRecorderRef = useRef(null)
+  const streamRef = useRef(null)
+  const chunksRef = useRef([])
+  const audioRef = useRef(null)
 
-.talking-stage {
-  display: grid;
-  place-items: center;
-  height: 100%;
-  min-height: 420px;
-  border-radius: 18px;
-  background: radial-gradient(circle at top, rgba(232, 195, 106, 0.12), transparent 30%), var(--bg-card);
-}
+  useEffect(function hydrateCharacters() {
+    const list = loadCharacters()
+    setCharacters(list)
+    if (list.length > 0) {
+      setSelectedCharacterId((previous) => previous || list[0].id)
+    }
+  }, [])
 
-.talking-character {
-  --skin-tone: #f3c79b;
-  --hair-color: #2d1f1a;
-  --eye-color: #2a6f9d;
-  --outfit-color: #5f7cff;
-  --accent-color: #f3d36d;
-  position: relative;
-  width: 180px;
-  height: 250px;
-}
+  useEffect(function syncVoices() {
+    const speech = window.speechSynthesis
+    if (!speech) {
+      return undefined
+    }
 
-.talking-shadow {
-  position: absolute;
-  left: 50%;
-  bottom: 10px;
-  width: 150px;
-  height: 18px;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.25);
-  filter: blur(8px);
-}
+    function updateVoices() {
+      setVoices(speech.getVoices())
+    }
 
-.talking-hair {
-  position: absolute;
-  left: 46px;
-  top: 18px;
-  width: 88px;
-  height: 40px;
-  border-radius: 50% 50% 38% 38%;
-  background: var(--hair-color);
-}
+    updateVoices()
+    speech.addEventListener('voiceschanged', updateVoices)
+    return function cleanup() {
+      speech.removeEventListener('voiceschanged', updateVoices)
+    }
+  }, [])
 
-.talking-head {
-  position: absolute;
-  left: 40px;
-  top: 46px;
-  width: 96px;
-  height: 90px;
-  border-radius: 42% 42% 48% 48%;
-  background: var(--skin-tone);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-}
+  useEffect(function cleanupUrls() {
+    return function revoke() {
+      if (recordedUrl) {
+        URL.revokeObjectURL(recordedUrl)
+      }
+    }
+  }, [recordedUrl])
 
-.talking-eye {
-  position: absolute;
-  top: 34px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--eye-color);
-}
+  const selectedCharacter = useMemo(function pickCharacter() {
+    return characters.find((item) => item.id === selectedCharacterId) || characters[0] || null
+  }, [characters, selectedCharacterId])
 
-.talking-eye.left { left: 22px; }
-.talking-eye.right { right: 22px; }
+  function speakDialogue() {
+    const speech = window.speechSynthesis
+    if (!speech) {
+      setRecordingError('Speech synthesis is not available in this browser.')
+      return
+    }
 
-.talking-mouth {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  width: 22px;
-  height: 10px;
-  border-bottom: 4px solid rgba(110, 52, 41, 0.9);
-  border-radius: 0 0 18px 18px;
-  transform: translateX(-50%);
-  transition: all 0.08s ease;
-}
+    speech.cancel()
+    const utterance = new SpeechSynthesisUtterance(dialogue || DEFAULT_TEXT)
+    utterance.voice = voices[voiceIndex] || null
+    utterance.rate = rate
+    utterance.pitch = pitch
+    utterance.volume = volume
+    utterance.onstart = function start() {
+      setIsSpeaking(true)
+      setRecordingError('')
+    }
+    utterance.onend = function end() {
+      setIsSpeaking(false)
+    }
+    utterance.onerror = function fail() {
+      setIsSpeaking(false)
+      setRecordingError('Speech playback could not run on this device.')
+    }
 
-.is-speaking .talking-mouth {
-  width: 30px;
-  height: 18px;
-  border-bottom-width: 7px;
-  animation: mouthPulse 0.18s ease-in-out infinite alternate;
-}
-
-.talking-body {
-  position: absolute;
-  left: 44px;
-  top: 118px;
-  width: 92px;
-  height: 90px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--outfit-color) 72%, white), var(--outfit-color));
-}
-
-.talking-arm {
-  position: absolute;
-  top: 8px;
-  width: 18px;
-  height: 65px;
-  border-radius: 999px;
-  background: var(--skin-tone);
-}
-
-.talking-arm.left { left: -10px; }
-.talking-arm.right { right: -10px; }
-
-.is-speaking .talking-arm.left { animation: armBounceLeft 0.28s ease-in-out infinite alternate; }
-.is-speaking .talking-arm.right { animation: armBounceRight 0.28s ease-in-out infinite alternate; }
-
-.talking-controls-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.character-picker-row .field,
-.compact-slider-group .field {
-  margin-bottom: 0;
-}
-
-.field textarea {
-  width: 100%;
-  resize: vertical;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-card);
-  color: var(--text);
-  padding: 10px 12px;
-}
-
-.field select {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-card);
-  color: var(--text);
-}
-
-.compact-slider-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-muted);
-  font-size: 0.82rem;
-}
-
-.control-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.recording-box {
-  margin-top: 8px;
-  padding: 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  background: var(--bg-card);
-}
-
-.recording-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  font-size: 0.9rem;
-}
-
-.recording-header span {
-  color: var(--text-muted);
-}
-
-.audio-player {
-  width: 100%;
-  margin-top: 12px;
-}
-
-.error-box {
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(194, 34, 31, 0.12);
-  color: var(--danger);
-}
-
-@keyframes mouthPulse {
-  0% { transform: translateX(-50%) scaleY(0.85); }
-  100% { transform: translateX(-50%) scaleY(1.2); }
-}
-
-@keyframes armBounceLeft {
-  0% { transform: rotate(12deg); }
-  100% { transform: rotate(-18deg); }
-}
-
-@keyframes armBounceRight {
-  0% { transform: rotate(-12deg); }
-  100% { transform: rotate(18deg); }
-}
-
-@media (max-width: 900px) {
-  .talking-layout {
-    grid-template-columns: 1fr;
+    speech.speak(utterance)
   }
+
+  function stopDialogue() {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+      setIsSpeaking(false)
+    }
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setRecordingError('Microphone recording is not supported in this browser.')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const recorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = recorder
+      chunksRef.current = []
+
+      recorder.ondataavailable = function push(event) {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onstop = function finish() {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        if (blob.size === 0) {
+          setRecordingError('The recording was empty. Try again.')
+          setRecordingState('Ready to record')
+          return
+        }
+
+        setRecordedUrl(function replace(previous) {
+          if (previous) {
+            URL.revokeObjectURL(previous)
+          }
+          return URL.createObjectURL(blob)
+        })
+        setRecordingState('Recording saved')
+        stream.getTracks().forEach(function stop(track) {
+          track.stop()
+        })
+      }
+
+      recorder.start()
+      setIsRecording(true)
+      setRecordingError('')
+      setRecordingState('Recording… speak now')
+    } catch {
+      setRecordingError('Microphone access was blocked. Please allow permission to record audio.')
+    }
+  }
+
+  function stopRecording() {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state === 'inactive') {
+      return
+    }
+    recorder.stop()
+    setIsRecording(false)
+  }
+
+  function playRecorded() {
+    if (!recordedUrl || !audioRef.current) {
+      return
+    }
+    audioRef.current.play()
+  }
+
+  if (!selectedCharacter) {
+    return null
+  }
+
+  return (
+    <div className="talking-studio">
+      <div className="section-head">
+        <div>
+          <p className="eyebrow">Workspace</p>
+          <h3>Talking Studio</h3>
+          <p>Browser speech synthesis, microphone recording, and a simple lip sync preview.</p>
+        </div>
+      </div>
+
+      <div className="talking-layout">
+        <section className="panel talking-stage-panel">
+          <div className="talking-stage">
+            <div
+              className={isSpeaking ? 'talking-character is-speaking' : 'talking-character'}
+              style={{
+                '--skin-tone': selectedCharacter.skinTone,
+                '--hair-color': selectedCharacter.hairColor,
+                '--eye-color': selectedCharacter.eyeColor,
+                '--outfit-color': selectedCharacter.outfitColor,
+                '--accent-color': selectedCharacter.accentColor,
+              }}
+            >
+              <div className="talking-shadow" />
+              <div className="talking-hair" />
+              <div className="talking-head">
+                <div className="talking-eye left" />
+                <div className="talking-eye right" />
+                <div className="talking-mouth" />
+              </div>
+              <div className="talking-body">
+                <div className="talking-arm left" />
+                <div className="talking-arm right" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside className="panel talking-controls-panel">
+          <div className="character-picker-row">
+            <label className="field">
+              <span>Character</span>
+              <select
+                value={selectedCharacterId}
+                onChange={function choose(event) {
+                  setSelectedCharacterId(event.target.value)
+                }}
+              >
+                {characters.map((character) => (
+                  <option key={character.id} value={character.id}>
+                    {character.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="field">
+            <span>Voice</span>
+            <select
+              value={voiceIndex}
+              onChange={function choose(event) {
+                setVoiceIndex(Number(event.target.value))
+              }}
+            >
+              {voices.length === 0 ? (
+                <option value={0}>System default voice</option>
+              ) : (
+                voices.map((voice, index) => (
+                  <option key={`${voice.name}-${index}`} value={index}>
+                    {voice.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Dialogue</span>
+            <textarea
+              rows="6"
+              value={dialogue}
+              onChange={function change(event) {
+                setDialogue(event.target.value)
+              }}
+            />
+          </label>
+
+          <div className="compact-slider-group">
+            <label className="field">
+              <span className="field-top">
+                Rate <span>{rate.toFixed(1)}×</span>
+              </span>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={rate}
+                onChange={function change(event) {
+                  setRate(Number(event.target.value))
+                }}
+              />
+            </label>
+            <label className="field">
+              <span className="field-top">
+                Pitch <span>{pitch.toFixed(1)}</span>
+              </span>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={pitch}
+                onChange={function change(event) {
+                  setPitch(Number(event.target.value))
+                }}
+              />
+            </label>
+            <label className="field">
+              <span className="field-top">
+                Volume <span>{volume.toFixed(1)}</span>
+              </span>
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.1"
+                value={volume}
+                onChange={function change(event) {
+                  setVolume(Number(event.target.value))
+                }}
+              />
+            </label>
+          </div>
+
+          <div className="control-row">
+            <button type="button" className="primary-btn" onClick={speakDialogue} disabled={isSpeaking}>
+              <Volume2 size={15} /> {isSpeaking ? 'Speaking…' : 'Speak'}
+            </button>
+            <button type="button" className="ghost-btn" onClick={stopDialogue}>
+              <Square size={14} /> Stop
+            </button>
+          </div>
+
+          <div className="recording-box">
+            <div className="recording-header">
+              <strong>Voice recording</strong>
+              <span>{recordingState}</span>
+            </div>
+            <div className="control-row">
+              {!isRecording ? (
+                <button type="button" className="primary-btn" onClick={startRecording}>
+                  <Mic size={15} /> Record
+                </button>
+              ) : (
+                <button type="button" className="ghost-btn danger" onClick={stopRecording}>
+                  <MicOff size={15} /> Stop
+                </button>
+              )}
+              {recordedUrl ? (
+                <button type="button" className="ghost-btn" onClick={playRecorded}>
+                  <Play size={14} /> Play
+                </button>
+              ) : null}
+            </div>
+            {recordedUrl ? (
+              <audio ref={audioRef} controls src={recordedUrl} className="audio-player" />
+            ) : null}
+          </div>
+
+          {recordingError ? <div className="error-box">{recordingError}</div> : null}
+        </aside>
+      </div>
+    </div>
+  )
 }
