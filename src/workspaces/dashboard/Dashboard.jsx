@@ -9,6 +9,13 @@ const SHORTCUTS = [
     ready: true,
   },
   {
+    id: 'character',
+    title: 'Build Characters',
+    body: 'Create reusable cartoon avatars and save them on this device.',
+    icon: UserRound,
+    ready: true,
+  },
+  {
     id: 'talking',
     title: 'Make It Talk',
     body: 'Voice and mouth animation come after Character Studio.',
@@ -27,13 +34,6 @@ const SHORTCUTS = [
     title: 'Create a Video',
     body: 'Timeline editing will combine scenes, audio, and captions.',
     icon: Clapperboard,
-    ready: false,
-  },
-  {
-    id: 'character',
-    title: 'Build Characters',
-    body: 'Reusable characters will be saved on this device.',
-    icon: UserRound,
     ready: false,
   },
   {

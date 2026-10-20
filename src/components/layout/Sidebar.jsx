@@ -16,7 +16,7 @@ import {
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: Home, ready: true },
   { id: 'cartoon', label: 'Cartoon Studio', icon: Image, ready: true },
-  { id: 'character', label: 'Character Studio', icon: UserRound, ready: false },
+  { id: 'character', label: 'Character Studio', icon: UserRound, ready: true },
   { id: 'talking', label: 'Talking Studio', icon: Mic, ready: false },
   { id: 'motion', label: 'Motion Studio', icon: PersonStanding, ready: false },
   { id: 'story', label: 'Story Studio', icon: BookOpen, ready: false },

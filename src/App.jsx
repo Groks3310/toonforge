@@ -2,13 +2,10 @@ import { useState } from 'react'
 import { AppShell } from './components/layout/AppShell.jsx'
 import { Dashboard } from './workspaces/dashboard/Dashboard.jsx'
 import { CartoonStudio } from './workspaces/cartoon-studio/CartoonStudio.jsx'
+import { CharacterStudio } from './workspaces/character-studio/CharacterStudio.jsx'
 import { ComingSoon } from './workspaces/coming-soon/ComingSoon.jsx'
 
 const COMING_SOON = {
-  character: {
-    title: 'Character Studio',
-    body: 'Reusable cartoon characters come next. We will start with a simple character format, then Three.js previews. This page is not a fake editor.',
-  },
   talking: {
     title: 'Talking Studio',
     body: 'Characters will speak with the browser’s built-in speech synthesis and optional microphone recordings. Lip-sync starts after a character can be displayed.',
@@ -53,6 +50,8 @@ export default function App() {
   let content = <Dashboard onNavigate={openWorkspace} />
   if (workspace === 'cartoon') {
     content = <CartoonStudio />
+  } else if (workspace === 'character') {
+    content = <CharacterStudio />
   } else if (COMING_SOON[workspace]) {
     content = <ComingSoon {...COMING_SOON[workspace]} />
   }
