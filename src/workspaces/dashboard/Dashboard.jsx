@@ -25,9 +25,9 @@ const SHORTCUTS = [
   {
     id: 'talking',
     title: 'Make It Talk',
-    body: 'Voice and mouth animation come after Character Studio.',
+    body: 'Use browser speech synthesis, voice recordings, and lip-sync preview.',
     icon: Mic,
-    ready: false,
+    ready: true,
   },
   {
     id: 'video',

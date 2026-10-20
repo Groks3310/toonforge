@@ -1,0 +1,310 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Mic, MicOff, Play, Square, Volume2 } from 'lucide-react'
+import { loadCharacters } from '../../lib/character-store.js'
+import './talking-studio.css'
+
+const DEFAULT_TEXT = 'Hello! I am ready to tell my story with ToonForge.'
+
+export function TalkingStudio() {
+  const [characters, setCharacters] = useState(function load() {
+    return loadCharacters()
+  })
+  const [selectedCharacterId, setSelectedCharacterId] = useState('')
+  const [dialogue, setDialogue] = useState(DEFAULT_TEXT)
+  const [voiceIndex, setVoiceIndex] = useState(0)
+  const [voices, setVoices] = useState([])
+  const [rate, setRate] = useState(1)
+  const [pitch, setPitch] = useState(1)
+  const [volume, setVolume] = useState(1)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingError, setRecordingError] = useState('')
+  const [recordedUrl, setRecordedUrl] = useState('')
+  const [recordingState, setRecordingState] = useState('Ready to record')
+
+  const mediaRecorderRef = useRef(null)
+  const streamRef = useRef(null)
+  const chunksRef = useRef([])
+  const audioRef = useRef(null)
+
+  useEffect(function hydrateCharacters() {
+    const list = loadCharacters()
+    setCharacters(list)
+    if (list.length > 0) {
+      setSelectedCharacterId((previous) => previous || list[0].id)
+    }
+  }, [])
+
+  useEffect(function syncVoices() {
+    const speech = window.speechSynthesis
+    if (!speech) {
+      return undefined
+    }
+
+    function updateVoices() {
+      setVoices(speech.getVoices())
+    }
+
+    updateVoices()
+    speech.addEventListener('voiceschanged', updateVoices)
+    return function cleanup() {
+      speech.removeEventListener('voiceschanged', updateVoices)
+    }
+  }, [])
+
+  useEffect(function cleanupUrls() {
+    return function revoke() {
+      if (recordedUrl) {
+        URL.revokeObjectURL(recordedUrl)
+      }
+    }
+  }, [recordedUrl])
+
+  const selectedCharacter = useMemo(function pickCharacter() {
+    return characters.find((item) => item.id === selectedCharacterId) || characters[0] || null
+  }, [characters, selectedCharacterId])
+
+  function speakDialogue() {
+    const speech = window.speechSynthesis
+    if (!speech) {
+      setRecordingError('Speech synthesis is not available in this browser.')
+      return
+    }
+
+    speech.cancel()
+    const utterance = new SpeechSynthesisUtterance(dialogue || DEFAULT_TEXT)
+    utterance.voice = voices[voiceIndex] || null
+    utterance.rate = rate
+    utterance.pitch = pitch
+    utterance.volume = volume
+    utterance.onstart = function start() {
+      setIsSpeaking(true)
+      setRecordingError('')
+    }
+    utterance.onend = function end() {
+      setIsSpeaking(false)
+    }
+    utterance.onerror = function fail() {
+      setIsSpeaking(false)
+      setRecordingError('Speech playback could not run on this device.')
+    }
+
+    speech.speak(utterance)
+  }
+
+  function stopDialogue() {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+      setIsSpeaking(false)
+    }
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setRecordingError('Microphone recording is not supported in this browser.')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const recorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = recorder
+      chunksRef.current = []
+
+      recorder.ondataavailable = function push(event) {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onstop = function finish() {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        if (blob.size === 0) {
+          setRecordingError('The recording was empty. Try again.')
+          setRecordingState('Ready to record')
+          return
+        }
+
+        setRecordedUrl(function replace(previous) {
+          if (previous) {
+            URL.revokeObjectURL(previous)
+          }
+          return URL.createObjectURL(blob)
+        })
+        setRecordingState('Recording saved')
+        stream.getTracks().forEach(function stop(track) {
+          track.stop()
+        })
+      }
+
+      recorder.start()
+      setIsRecording(true)
+      setRecordingError('')
+      setRecordingState('Recording… speak now')
+    } catch {
+      setRecordingError('Microphone access was blocked. Please allow permission to record audio.')
+    }
+  }
+
+  function stopRecording() {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state === 'inactive') {
+      return
+    }
+    recorder.stop()
+    setIsRecording(false)
+  }
+
+  function playRecorded() {
+    if (!recordedUrl || !audioRef.current) {
+      return
+    }
+    audioRef.current.play()
+  }
+
+  if (!selectedCharacter) {
+    return null
+  }
+
+  return (
+    <div className="talking-studio">
+      <div className="section-head">
+        <div>
+          <p className="eyebrow">Workspace</p>
+          <h3>Talking Studio</h3>
+          <p>Browser speech synthesis, microphone recording, and a simple lip sync preview.</p>
+        </div>
+      </div>
+
+      <div className="talking-layout">
+        <section className="panel talking-stage-panel">
+          <div className="talking-stage">
+            <div className={isSpeaking ? 'talking-character is-speaking' : 'talking-character'} style={{ '--skin-tone': selectedCharacter.skinTone, '--hair-color': selectedCharacter.hairColor, '--eye-color': selectedCharacter.eyeColor, '--outfit-color': selectedCharacter.outfitColor, '--accent-color': selectedCharacter.accentColor }}>
+              <div className="talking-shadow" />
+              <div className="talking-hair" />
+              <div className="talking-head">
+                <div className="talking-eye left" />
+                <div className="talking-eye right" />
+                <div className="talking-mouth" />
+              </div>
+              <div className="talking-body">
+                <div className="talking-arm left" />
+                <div className="talking-arm right" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside className="panel talking-controls-panel">
+          <div className="character-picker-row">
+            <label className="field">
+              <span>Character</span>
+              <select
+                value={selectedCharacterId}
+                onChange={function choose(event) {
+                  setSelectedCharacterId(event.target.value)
+                }}
+              >
+                {characters.map((character) => (
+                  <option key={character.id} value={character.id}>
+                    {character.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="field">
+            <span>Voice</span>
+            <select
+              value={voiceIndex}
+              onChange={function choose(event) {
+                setVoiceIndex(Number(event.target.value))
+              }}
+            >
+              {voices.length === 0 ? (
+                <option value={0}>System default voice</option>
+              ) : (
+                voices.map((voice, index) => (
+                  <option key={`${voice.name}-${index}`} value={index}>
+                    {voice.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Dialogue</span>
+            <textarea
+              rows="6"
+              value={dialogue}
+              onChange={function change(event) {
+                setDialogue(event.target.value)
+              }}
+            />
+          </label>
+
+          <div className="compact-slider-group">
+            <label className="field">
+              <span className="field-top">
+                Rate <span>{rate.toFixed(1)}×</span>
+              </span>
+              <input type="range" min="0.5" max="2" step="0.1" value={rate} onChange={function change(event) { setRate(Number(event.target.value)) }} />
+            </label>
+            <label className="field">
+              <span className="field-top">
+                Pitch <span>{pitch.toFixed(1)}</span>
+              </span>
+              <input type="range" min="0.5" max="2" step="0.1" value={pitch} onChange={function change(event) { setPitch(Number(event.target.value)) }} />
+            </label>
+            <label className="field">
+              <span className="field-top">
+                Volume <span>{volume.toFixed(1)}</span>
+              </span>
+              <input type="range" min="0.1" max="1" step="0.1" value={volume} onChange={function change(event) { setVolume(Number(event.target.value)) }} />
+            </label>
+          </div>
+
+          <div className="control-row">
+            <button type="button" className="primary-btn" onClick={speakDialogue} disabled={isSpeaking}>
+              <Volume2 size={15} /> {isSpeaking ? 'Speaking…' : 'Speak'}
+            </button>
+            <button type="button" className="ghost-btn" onClick={stopDialogue}>
+              <Square size={14} /> Stop
+            </button>
+          </div>
+
+          <div className="recording-box">
+            <div className="recording-header">
+              <strong>Voice recording</strong>
+              <span>{recordingState}</span>
+            </div>
+            <div className="control-row">
+              {!isRecording ? (
+                <button type="button" className="primary-btn" onClick={startRecording}>
+                  <Mic size={15} /> Record
+                </button>
+              ) : (
+                <button type="button" className="ghost-btn danger" onClick={stopRecording}>
+                  <MicOff size={15} /> Stop
+                </button>
+              )}
+              {recordedUrl ? (
+                <button type="button" className="ghost-btn" onClick={playRecorded}>
+                  <Play size={14} /> Play
+                </button>
+              ) : null}
+            </div>
+            {recordedUrl ? (
+              <audio ref={audioRef} controls src={recordedUrl} className="audio-player" />
+            ) : null}
+          </div>
+
+          {recordingError ? <div className="error-box">{recordingError}</div> : null}
+        </aside>
+      </div>
+    </div>
+  )
+}
