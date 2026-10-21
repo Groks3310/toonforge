@@ -1,61 +1,82 @@
-import { useState } from 'react'
-import { AppShell } from './components/layout/AppShell.jsx'
-import { Dashboard } from './workspaces/dashboard/Dashboard.jsx'
-import { CartoonStudio } from './workspaces/cartoon-studio/CartoonStudio.jsx'
-import { CharacterStudio } from './workspaces/character-studio/CharacterStudio.jsx'
-import { MotionStudio } from './workspaces/motion-studio/MotionStudio.jsx'
-import { StoryStudio } from './workspaces/story-studio/StoryStudio.jsx'
-import { TalkingStudio } from './workspaces/talking-studio/TalkingStudio.jsx'
-import { ComingSoon } from './workspaces/coming-soon/ComingSoon.jsx'
+const STORAGE_KEY = 'toonforge-stories-v1'
 
-const COMING_SOON = {
-  video: {
-    title: 'Video Studio',
-    body: 'The timeline and export tools come after we can preview animation and audio together. Browser export formats will be tested before we promise MP4.',
-  },
-  audio: {
-    title: 'Audio Studio',
-    body: 'Recording, import, trimming, and beat detection will live here. No copyrighted music is bundled.',
-  },
-  projects: {
-    title: 'My Projects',
-    body: 'Projects will save on this device with IndexedDB. Nothing is stored on a server in this version.',
-  },
-  settings: {
-    title: 'Settings',
-    body: 'Theme already lives in the top-right control (Light, Dark, System). More preferences will be added as features exist.',
-  },
-  help: {
-    title: 'Help & Support',
-    body: 'ToonForge runs locally in your browser. Photographs never leave this computer unless you export and share them yourself.',
-  },
+export function createScene(overrides = {}) {
+  const characterId = Array.isArray(overrides.characterIds) && overrides.characterIds.length > 0 ? overrides.characterIds[0] : overrides.characterId || ''
+
+  return {
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `scene-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title: 'Scene 1',
+    background: 'sunset',
+    backgroundImage: '',
+    characterId,
+    characterIds: Array.isArray(overrides.characterIds) ? overrides.characterIds : (characterId ? [characterId] : []),
+    dialogue: 'A new idea begins to form.',
+    mood: 'hopeful',
+    notes: '',
+    ...overrides,
+  }
 }
 
-export default function App() {
-  const [workspace, setWorkspace] = useState('dashboard')
-
-  function openWorkspace(id) {
-    setWorkspace(id)
+export function createStory(overrides = {}) {
+  const nextScene = createScene({ title: 'Scene 1' })
+  return {
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `story-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title: 'My Story',
+    scenes: [nextScene],
+    ...overrides,
   }
+}
 
-  let content = <Dashboard onNavigate={openWorkspace} />
-  if (workspace === 'cartoon') {
-    content = <CartoonStudio />
-  } else if (workspace === 'character') {
-    content = <CharacterStudio />
-  } else if (workspace === 'motion') {
-    content = <MotionStudio />
-  } else if (workspace === 'story') {
-    content = <StoryStudio />
-  } else if (workspace === 'talking') {
-    content = <TalkingStudio />
-  } else if (COMING_SOON[workspace]) {
-    content = <ComingSoon {...COMING_SOON[workspace]} />
+export function normalizeScene(value = {}) {
+  const fallbackIds = Array.isArray(value.characterIds) ? value.characterIds.filter(Boolean) : []
+  const fallbackCharacter = typeof value.characterId === 'string' && value.characterId ? value.characterId : fallbackIds[0] || ''
+
+  return {
+    id: value.id || createScene().id,
+    title: value.title || 'Untitled scene',
+    background: value.background || 'sunset',
+    backgroundImage: typeof value.backgroundImage === 'string' ? value.backgroundImage : '',
+    characterId: fallbackCharacter,
+    characterIds: fallbackIds.length > 0 ? fallbackIds : (fallbackCharacter ? [fallbackCharacter] : []),
+    dialogue: value.dialogue || '',
+    mood: value.mood || 'hopeful',
+    notes: value.notes || '',
   }
+}
 
-  return (
-    <AppShell workspace={workspace} onNavigate={openWorkspace}>
-      {content}
-    </AppShell>
-  )
+export function normalizeStory(value = {}) {
+  const scenes = Array.isArray(value.scenes) && value.scenes.length > 0 ? value.scenes.map(normalizeScene) : [createScene({ title: 'Scene 1' })]
+
+  return {
+    id: value.id || createStory().id,
+    title: value.title || 'My Story',
+    scenes,
+  }
+}
+
+export function loadStories() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      return [createStory({ title: 'My first story' })]
+    }
+
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return [createStory({ title: 'My first story' })]
+    }
+
+    return parsed.map(normalizeStory)
+  } catch {
+    return [createStory({ title: 'My first story' })]
+  }
+}
+
+export function saveStories(stories) {
+  try {
+    const payload = Array.isArray(stories) ? stories.map(normalizeStory) : []
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    // ignore local storage failures in restricted browser modes
+  }
 }
