@@ -5,13 +5,10 @@ import { CartoonStudio } from './workspaces/cartoon-studio/CartoonStudio.jsx'
 import { CharacterStudio } from './workspaces/character-studio/CharacterStudio.jsx'
 import { MotionStudio } from './workspaces/motion-studio/MotionStudio.jsx'
 import { TalkingStudio } from './workspaces/talking-studio/TalkingStudio.jsx'
+import { StoryStudio } from './workspaces/story-studio/StoryStudio.jsx'
 import { ComingSoon } from './workspaces/coming-soon/ComingSoon.jsx'
 
 const COMING_SOON = {
-  story: {
-    title: 'Story Studio',
-    body: 'Multi-scene stories will reuse characters, dialogue, and backgrounds. Templates will be editable starting points, not generated scripts.',
-  },
   video: {
     title: 'Video Studio',
     body: 'The timeline and export tools come after we can preview animation and audio together. Browser export formats will be tested before we promise MP4.',
@@ -50,6 +47,8 @@ export default function App() {
     content = <MotionStudio />
   } else if (workspace === 'talking') {
     content = <TalkingStudio />
+  } else if (workspace === 'story') {
+    content = <StoryStudio />
   } else if (COMING_SOON[workspace]) {
     content = <ComingSoon {...COMING_SOON[workspace]} />
   }
