@@ -18,6 +18,28 @@ function backgroundOf(name) {
   return BACKGROUNDS[name] || BACKGROUNDS.sunset
 }
 
+// Maps a saved character onto the CSS variables used by .thumb-character.
+function CharacterFigure({ character, large }) {
+  const style = {
+    '--skin-tone': character.skinTone,
+    '--hair-color': character.hairColor,
+    '--eye-color': character.eyeColor,
+    '--outfit-color': character.outfitColor,
+  }
+  if (large) {
+    style.bottom = 80
+    style.transform = 'translateX(-50%) scale(2.4)'
+    style.transformOrigin = 'bottom'
+  }
+  return (
+    <span className="thumb-character" style={style}>
+      <span className="thumb-hair" />
+      <span className="thumb-head" />
+      <span className="thumb-body" />
+    </span>
+  )
+}
+
 export function StoryStudio() {
   const [characters] = useState(loadCharacters)
   const [stories, setStories] = useState(loadStories)
@@ -35,10 +57,15 @@ export function StoryStudio() {
     [stories],
   )
 
+  function findCharacter(id) {
+    return characters.find((item) => item.id === id)
+  }
+
   const story = stories.find((item) => item.id === storyId) || stories[0]
   const scene = story.scenes.find((item) => item.id === sceneId) || story.scenes[0]
   const sceneIndex = story.scenes.indexOf(scene)
   const look = backgroundOf(scene.background)
+  const sceneCharacter = findCharacter(scene.characterId)
 
   function changeStory(change) {
     setStories(function apply(list) {
@@ -163,6 +190,7 @@ export function StoryStudio() {
           <div className="story-scene-list">
             {story.scenes.map(function renderScene(item, index) {
               const itemLook = backgroundOf(item.background)
+              const itemCharacter = findCharacter(item.characterId)
               return (
                 <button
                   key={item.id}
@@ -174,13 +202,7 @@ export function StoryStudio() {
                     className="scene-thumb"
                     style={{ background: 'linear-gradient(135deg,' + itemLook.sky1 + ',' + itemLook.sky2 + ')' }}
                   >
-                    {item.characterId ? (
-                      <span className="thumb-character">
-                        <span className="thumb-hair" />
-                        <span className="thumb-head" />
-                        <span className="thumb-body" />
-                      </span>
-                    ) : null}
+                    {itemCharacter ? <CharacterFigure character={itemCharacter} /> : null}
                   </span>
                   <span className="scene-copy">
                     <strong>{index + 1}. {item.title}</strong>
@@ -218,13 +240,7 @@ export function StoryStudio() {
             className="story-stage"
             style={{ background: 'linear-gradient(180deg,' + look.sky1 + ',' + look.sky2 + ')' }}
           >
-            {scene.characterId ? (
-              <span className="thumb-character" style={{ transform: 'translateX(-50%) scale(2.4)', transformOrigin: 'bottom' }}>
-                <span className="thumb-hair" />
-                <span className="thumb-head" />
-                <span className="thumb-body" />
-              </span>
-            ) : null}
+            {sceneCharacter ? <CharacterFigure character={sceneCharacter} large /> : null}
             <div
               style={{
                 position: 'absolute',
@@ -261,8 +277,11 @@ export function StoryStudio() {
             <select id="scene-character" value={scene.characterId} onChange={(event) => changeScene({ characterId: event.target.value })}>
               <option value="">None</option>
               {characters.map((item) => (
-                <option key={item.id} value={item.id}>{item.name || item.title || 'Unnamed character'}</option>
+                <option key={item.id} value={item.id}>{item.name}</option>
               ))}
+              {scene.characterId && !sceneCharacter ? (
+                <option value={scene.characterId}>Deleted character</option>
+              ) : null}
             </select>
           </div>
           <div className="field">

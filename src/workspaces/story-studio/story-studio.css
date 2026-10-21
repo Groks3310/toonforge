@@ -538,282 +538,223 @@
     grid-template-columns: 1fr;
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"}]}  
+/* ---- Rules used by the current StoryStudio.jsx ---- */
+.story-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.story-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1.5fr) 340px;
+  gap: 18px;
+}
+
+@media (max-width: 1100px) {
+  .story-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.story-sidebar-panel,
+.story-main-panel,
+.story-controls-panel {
+  min-height: 600px;
+}
+
+.story-sidebar-panel,
+.story-main-panel,
+.story-controls-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.story-sidebar-toolbar,
+.story-main-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.story-sidebar-toolbar h3 {
+  margin: 0;
+}
+
+.primary-btn.small {
+  padding: 9px 12px;
+  font-size: 0.86rem;
+}
+
+.story-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.story-card,
+.story-scene-card {
+  display: flex;
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  color: inherit;
+  text-align: left;
+}
+
+.story-card {
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border-radius: 14px;
+}
+
+.story-card.active,
+.story-scene-card.active {
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+
+.story-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--gold-dim);
+  color: var(--gold);
+  display: grid;
+  place-items: center;
+}
+
+.story-card-copy,
+.scene-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.story-card-copy small,
+.scene-copy small {
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.editable-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editable-name label,
+.field label {
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editable-name input,
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.story-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.story-scene-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.story-scene-card {
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.scene-thumb {
+  position: relative;
+  display: block;
+  height: 94px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.thumb-character {
+  --skin-tone: #f3c79b;
+  --hair-color: #2d1f1a;
+  --eye-color: #2a6f9d;
+  --outfit-color: #5f7cff;
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 52px;
+  height: 60px;
+  transform: translateX(-50%);
+}
+
+.thumb-hair,
+.thumb-head,
+.thumb-body {
+  position: absolute;
+  display: block;
+}
+
+.thumb-hair {
+  left: 10px;
+  top: 2px;
+  width: 32px;
+  height: 18px;
+  border-radius: 12px 12px 8px 8px;
+  background: var(--hair-color);
+}
+
+.thumb-head {
+  left: 12px;
+  top: 10px;
+  width: 28px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--skin-tone);
+}
+
+.thumb-body {
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 22px;
+  border-radius: 12px 12px 8px 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--outfit-color) 75%, white), var(--outfit-color));
+}
+
+.story-stage {
+  min-height: 420px;
+  border-radius: 20px;
+  overflow: hidden;
+}
