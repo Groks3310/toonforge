@@ -1,310 +1,313 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Mic, MicOff, Play, Square, Volume2 } from 'lucide-react'
-import { loadCharacters } from '../../lib/character-store.js'
-import './talking-studio.css'
+/* Talking Studio: layout, character preview, speaking animation and controls.
+   Global tokens (colors, .panel, .primary-btn, .field) come from src/styles/index.css,
+   which main.jsx already loads, so nothing is imported here. */
 
-const DEFAULT_TEXT = 'Hello! I am ready to tell my story with ToonForge.'
+.talking-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
 
-export function TalkingStudio() {
-  const [characters, setCharacters] = useState(function load() {
-    return loadCharacters()
-  })
-  const [selectedCharacterId, setSelectedCharacterId] = useState('')
-  const [dialogue, setDialogue] = useState(DEFAULT_TEXT)
-  const [voiceIndex, setVoiceIndex] = useState(0)
-  const [voices, setVoices] = useState([])
-  const [rate, setRate] = useState(1)
-  const [pitch, setPitch] = useState(1)
-  const [volume, setVolume] = useState(1)
-  const [isSpeaking, setIsSpeaking] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingError, setRecordingError] = useState('')
-  const [recordedUrl, setRecordedUrl] = useState('')
-  const [recordingState, setRecordingState] = useState('Ready to record')
+.talking-studio .panel-header h2 {
+  margin: 0;
+}
 
-  const mediaRecorderRef = useRef(null)
-  const streamRef = useRef(null)
-  const chunksRef = useRef([])
-  const audioRef = useRef(null)
+.talking-studio .panel-head {
+  margin-bottom: 14px;
+}
 
-  useEffect(function hydrateCharacters() {
-    const list = loadCharacters()
-    setCharacters(list)
-    if (list.length > 0) {
-      setSelectedCharacterId((previous) => previous || list[0].id)
-    }
-  }, [])
+.talking-studio .panel-head h3 {
+  margin: 0;
+}
 
-  useEffect(function syncVoices() {
-    const speech = window.speechSynthesis
-    if (!speech) {
-      return undefined
-    }
+.talking-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 420px);
+  gap: 18px;
+  align-items: start;
+}
 
-    function updateVoices() {
-      setVoices(speech.getVoices())
-    }
+/* ---------- Preview stage ---------- */
 
-    updateVoices()
-    speech.addEventListener('voiceschanged', updateVoices)
-    return function cleanup() {
-      speech.removeEventListener('voiceschanged', updateVoices)
-    }
-  }, [])
+.talking-stage {
+  position: relative;
+  min-height: 440px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #1d2433 0%, #ef8a53 62%, #c47e4d 100%);
+}
 
-  useEffect(function cleanupUrls() {
-    return function revoke() {
-      if (recordedUrl) {
-        URL.revokeObjectURL(recordedUrl)
-      }
-    }
-  }, [recordedUrl])
+.talking-character {
+  --skin-tone: #f3c79b;
+  --hair-color: #2d1f1a;
+  --eye-color: #2a6f9d;
+  --outfit-color: #5f7cff;
+  position: relative;
+  width: 180px;
+  height: 220px;
+}
 
-  const selectedCharacter = useMemo(function pickCharacter() {
-    return characters.find((item) => item.id === selectedCharacterId) || characters[0] || null
-  }, [characters, selectedCharacterId])
+.talking-shadow {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 6px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+  filter: blur(8px);
+}
 
-  function speakDialogue() {
-    const speech = window.speechSynthesis
-    if (!speech) {
-      setRecordingError('Speech synthesis is not available in this browser.')
-      return
-    }
+.talking-hair {
+  position: absolute;
+  left: 42px;
+  top: 14px;
+  width: 100px;
+  height: 56px;
+  border-radius: 54% 46% 42% 58%;
+  background: var(--hair-color);
+  z-index: 1;
+}
 
-    speech.cancel()
-    const utterance = new SpeechSynthesisUtterance(dialogue || DEFAULT_TEXT)
-    utterance.voice = voices[voiceIndex] || null
-    utterance.rate = rate
-    utterance.pitch = pitch
-    utterance.volume = volume
-    utterance.onstart = function start() {
-      setIsSpeaking(true)
-      setRecordingError('')
-    }
-    utterance.onend = function end() {
-      setIsSpeaking(false)
-    }
-    utterance.onerror = function fail() {
-      setIsSpeaking(false)
-      setRecordingError('Speech playback could not run on this device.')
-    }
+.talking-head {
+  position: absolute;
+  left: 44px;
+  top: 34px;
+  width: 92px;
+  height: 86px;
+  border-radius: 42% 42% 48% 48%;
+  background: var(--skin-tone);
+  z-index: 2;
+}
 
-    speech.speak(utterance)
+.talking-eye {
+  position: absolute;
+  top: 34px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--eye-color);
+}
+
+.talking-eye.left {
+  left: 22px;
+}
+
+.talking-eye.right {
+  right: 22px;
+}
+
+.talking-mouth {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  width: 18px;
+  height: 8px;
+  border-bottom: 3px solid rgba(110, 52, 41, 0.9);
+  border-radius: 0 0 16px 16px;
+  transform: translateX(-50%);
+}
+
+.talking-body {
+  position: absolute;
+  left: 46px;
+  bottom: 24px;
+  width: 90px;
+  height: 96px;
+  border-radius: 18px 18px 20px 20px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--outfit-color) 75%, white),
+    var(--outfit-color)
+  );
+}
+
+.talking-arm {
+  position: absolute;
+  top: 118px;
+  width: 16px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--skin-tone);
+}
+
+.talking-arm.left {
+  left: 30px;
+  transform: rotate(14deg);
+}
+
+.talking-arm.right {
+  right: 30px;
+  transform: rotate(-14deg);
+}
+
+/* The mouth opens and closes only while speech is playing. This is a basic
+   open/close loop, not lip-sync to the actual sounds. */
+.talking-character.is-speaking .talking-mouth {
+  animation: talking-mouth 0.26s ease-in-out infinite alternate;
+}
+
+@keyframes talking-mouth {
+  from {
+    width: 16px;
+    height: 4px;
+    background: transparent;
+    border-radius: 0 0 16px 16px;
   }
-
-  function stopDialogue() {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel()
-      setIsSpeaking(false)
-    }
+  to {
+    width: 22px;
+    height: 16px;
+    background: #6e3429;
+    border-bottom-color: transparent;
+    border-radius: 50%;
   }
+}
 
-  async function startRecording() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setRecordingError('Microphone recording is not supported in this browser.')
-      return
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-      const recorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = recorder
-      chunksRef.current = []
-
-      recorder.ondataavailable = function push(event) {
-        if (event.data && event.data.size > 0) {
-          chunksRef.current.push(event.data)
-        }
-      }
-
-      recorder.onstop = function finish() {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        if (blob.size === 0) {
-          setRecordingError('The recording was empty. Try again.')
-          setRecordingState('Ready to record')
-          return
-        }
-
-        setRecordedUrl(function replace(previous) {
-          if (previous) {
-            URL.revokeObjectURL(previous)
-          }
-          return URL.createObjectURL(blob)
-        })
-        setRecordingState('Recording saved')
-        stream.getTracks().forEach(function stop(track) {
-          track.stop()
-        })
-      }
-
-      recorder.start()
-      setIsRecording(true)
-      setRecordingError('')
-      setRecordingState('Recording… speak now')
-    } catch {
-      setRecordingError('Microphone access was blocked. Please allow permission to record audio.')
-    }
+@media (prefers-reduced-motion: reduce) {
+  .talking-character.is-speaking .talking-mouth {
+    animation: none;
+    width: 20px;
+    height: 12px;
+    background: #6e3429;
+    border-bottom-color: transparent;
+    border-radius: 50%;
   }
+}
 
-  function stopRecording() {
-    const recorder = mediaRecorderRef.current
-    if (!recorder || recorder.state === 'inactive') {
-      return
-    }
-    recorder.stop()
-    setIsRecording(false)
+/* ---------- Controls ---------- */
+
+.talking-controls-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.talking-studio .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.talking-studio .field label {
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.talking-studio .field select,
+.talking-studio .field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+}
+
+.talking-studio .field textarea {
+  resize: vertical;
+  min-height: 110px;
+}
+
+.talking-studio .field-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.talking-studio .field input[type='range'] {
+  width: 100%;
+}
+
+.compact-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.talking-studio .control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.secondary-btn:hover,
+.secondary-btn:focus-visible {
+  background: var(--bg-card-hover);
+  border-color: var(--gold);
+}
+
+.file-button {
+  cursor: pointer;
+}
+
+.recording-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--bg-panel);
+}
+
+.recording-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.9rem;
+}
+
+.recording-header span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.audio-player-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audio-player {
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .talking-layout {
+    grid-template-columns: 1fr;
   }
+}
 
-  function playRecorded() {
-    if (!recordedUrl || !audioRef.current) {
-      return
-    }
-    audioRef.current.play()
+@media (max-width: 640px) {
+  .talking-stage {
+    min-height: 340px;
+    padding: 16px;
   }
-
-  if (!selectedCharacter) {
-    return null
-  }
-
-  return (
-    <div className="talking-studio">
-      <div className="section-head">
-        <div>
-          <p className="eyebrow">Workspace</p>
-          <h3>Talking Studio</h3>
-          <p>Browser speech synthesis, microphone recording, and a simple lip sync preview.</p>
-        </div>
-      </div>
-
-      <div className="talking-layout">
-        <section className="panel talking-stage-panel">
-          <div className="talking-stage">
-            <div className={isSpeaking ? 'talking-character is-speaking' : 'talking-character'} style={{ '--skin-tone': selectedCharacter.skinTone, '--hair-color': selectedCharacter.hairColor, '--eye-color': selectedCharacter.eyeColor, '--outfit-color': selectedCharacter.outfitColor, '--accent-color': selectedCharacter.accentColor }}>
-              <div className="talking-shadow" />
-              <div className="talking-hair" />
-              <div className="talking-head">
-                <div className="talking-eye left" />
-                <div className="talking-eye right" />
-                <div className="talking-mouth" />
-              </div>
-              <div className="talking-body">
-                <div className="talking-arm left" />
-                <div className="talking-arm right" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <aside className="panel talking-controls-panel">
-          <div className="character-picker-row">
-            <label className="field">
-              <span>Character</span>
-              <select
-                value={selectedCharacterId}
-                onChange={function choose(event) {
-                  setSelectedCharacterId(event.target.value)
-                }}
-              >
-                {characters.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <label className="field">
-            <span>Voice</span>
-            <select
-              value={voiceIndex}
-              onChange={function choose(event) {
-                setVoiceIndex(Number(event.target.value))
-              }}
-            >
-              {voices.length === 0 ? (
-                <option value={0}>System default voice</option>
-              ) : (
-                voices.map((voice, index) => (
-                  <option key={`${voice.name}-${index}`} value={index}>
-                    {voice.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>Dialogue</span>
-            <textarea
-              rows="6"
-              value={dialogue}
-              onChange={function change(event) {
-                setDialogue(event.target.value)
-              }}
-            />
-          </label>
-
-          <div className="compact-slider-group">
-            <label className="field">
-              <span className="field-top">
-                Rate <span>{rate.toFixed(1)}×</span>
-              </span>
-              <input type="range" min="0.5" max="2" step="0.1" value={rate} onChange={function change(event) { setRate(Number(event.target.value)) }} />
-            </label>
-            <label className="field">
-              <span className="field-top">
-                Pitch <span>{pitch.toFixed(1)}</span>
-              </span>
-              <input type="range" min="0.5" max="2" step="0.1" value={pitch} onChange={function change(event) { setPitch(Number(event.target.value)) }} />
-            </label>
-            <label className="field">
-              <span className="field-top">
-                Volume <span>{volume.toFixed(1)}</span>
-              </span>
-              <input type="range" min="0.1" max="1" step="0.1" value={volume} onChange={function change(event) { setVolume(Number(event.target.value)) }} />
-            </label>
-          </div>
-
-          <div className="control-row">
-            <button type="button" className="primary-btn" onClick={speakDialogue} disabled={isSpeaking}>
-              <Volume2 size={15} /> {isSpeaking ? 'Speaking…' : 'Speak'}
-            </button>
-            <button type="button" className="ghost-btn" onClick={stopDialogue}>
-              <Square size={14} /> Stop
-            </button>
-          </div>
-
-          <div className="recording-box">
-            <div className="recording-header">
-              <strong>Voice recording</strong>
-              <span>{recordingState}</span>
-            </div>
-            <div className="control-row">
-              {!isRecording ? (
-                <button type="button" className="primary-btn" onClick={startRecording}>
-                  <Mic size={15} /> Record
-                </button>
-              ) : (
-                <button type="button" className="ghost-btn danger" onClick={stopRecording}>
-                  <MicOff size={15} /> Stop
-                </button>
-              )}
-              {recordedUrl ? (
-                <button type="button" className="ghost-btn" onClick={playRecorded}>
-                  <Play size={14} /> Play
-                </button>
-              ) : null}
-            </div>
-            {recordedUrl ? (
-              <audio ref={audioRef} controls src={recordedUrl} className="audio-player" />
-            ) : null}
-          </div>
-
-          {recordingError ? <div className="error-box">{recordingError}</div> : null}
-        </aside>
-      </div>
-    </div>
-  )
 }

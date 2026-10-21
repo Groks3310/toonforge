@@ -2,6 +2,12 @@ import { useRef } from 'react'
 import { ImagePlus, X } from 'lucide-react'
 import { ACCEPTED_TYPES, GRADIENT_DIRECTIONS } from '../../lib/image-processing/cartoon.js'
 
+const CUTOUTS = [
+  { id: 'off', label: 'Keep original' },
+  { id: 'smart', label: 'Smart cutout' },
+  { id: 'plain', label: 'Plain backdrop' },
+]
+
 const TYPES = [
   { id: 'none', label: 'Transparent' },
   { id: 'color', label: 'Color' },
@@ -10,11 +16,11 @@ const TYPES = [
 ]
 
 export function BackgroundControls({
-  removeBackdrop,
+  cutout,
   tolerance,
   background,
   backgroundImageName,
-  onRemoveBackdropChange,
+  onCutoutChange,
   onToleranceChange,
   onBackgroundChange,
   onPickBackgroundImage,
@@ -34,17 +40,23 @@ export function BackgroundControls({
     <div className="control-section">
       <h3>Background</h3>
 
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={removeBackdrop}
-          onChange={function change(event) {
-            onRemoveBackdropChange(event.target.checked)
-          }}
-        />
-        Remove plain backdrop
-      </label>
-      {removeBackdrop ? (
+      <div className="seg seg-3" role="group" aria-label="Remove the original background">
+        {CUTOUTS.map(function renderCutout(item) {
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={cutout === item.id ? 'active' : ''}
+              onClick={function select() {
+                onCutoutChange(item.id)
+              }}
+            >
+              {item.label}
+            </button>
+          )
+        })}
+      </div>
+      {cutout === 'plain' ? (
         <label className="field">
           <span className="field-top">
             Backdrop tolerance <span>{tolerance}</span>
@@ -61,8 +73,11 @@ export function BackgroundControls({
         </label>
       ) : null}
       <p className="hint">
-        This is a simple color rule, not AI. It works best on a solid, light backdrop. Soft shadows can
-        leave a pale fringe and gaps enclosed by the subject are kept.
+        {cutout === 'smart'
+          ? 'A small model finds the main subject on this device. The first use loads about 18 MB, then it works offline. Fine hair and glass can get rough edges.'
+          : cutout === 'plain'
+            ? 'A simple color rule, not AI. It only works on a solid, light backdrop, and soft shadows can leave a pale fringe.'
+            : 'Choose Smart cutout to remove the original background.'}
       </p>
 
       <div className="seg" role="group" aria-label="Background type">
@@ -175,9 +190,9 @@ export function BackgroundControls({
       <p className="hint">
         {background.type === 'none'
           ? 'Transparent areas show as a checkerboard. PNG and WebP keep them; JPG fills them with white.'
-          : removeBackdrop
-            ? 'The background is drawn behind the cartoon wherever the backdrop was removed.'
-            : 'A background only shows where the picture is transparent. For a photo with a solid backdrop, turn on Remove plain backdrop.'}
+          : cutout !== 'off'
+            ? 'The background is drawn behind the cartoon wherever the original background was removed.'
+            : 'A background only shows where the picture is transparent. Choose Smart cutout to remove the original background.'}
       </p>
     </div>
   )

@@ -1,3 +1,5 @@
+import { buildSubjectMask } from './mask.js'
+
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
 
 export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
@@ -155,7 +157,12 @@ export function cartoonPixels(pixels, width, height, options) {
   // Make a plain backdrop transparent first, so smoothing and outlines treat it
   // as empty space instead of part of the subject.
   let backdrop = null
-  if (options.removeBackground) {
+  let subject = null
+  if (options.subject) {
+    // options.subject = { data, size } is the raw segmentation model output.
+    const mask = buildSubjectMask(options.subject.data, options.subject.size, width, height, options.zoom || 1)
+    subject = isolateSubject(pixels, width, height, mask)
+  } else if (options.removeBackground) {
     backdrop = removePlainBackdrop(pixels, width, height, options.backdropTolerance ?? 40)
   }
 
@@ -186,6 +193,9 @@ export function cartoonPixels(pixels, width, height, options) {
   // which removes the pale halo around the subject.
   if (backdrop) {
     dropUninkedRim(pixels, backdrop)
+  }
+  if (subject) {
+    applySubjectAlpha(pixels, subject)
   }
 }
 
@@ -300,6 +310,81 @@ export async function renderExport(canvas, formatId, quality) {
     throw new Error(`This browser cannot export ${format.label}. Try PNG or JPG.`)
   }
   return { blob, extension: format.extension }
+}
+
+// Smart cutout, step 1. Everything outside the subject mask is flattened to one
+// plain color, so smoothing and outlines see a clean subject-versus-flat edge
+// instead of a busy background. Returns what step 2 needs, or null when the
+// model found nothing (or found the whole picture).
+function isolateSubject(pixels, width, height, mask) {
+  let sum = 0
+  let count = 0
+  for (let p = 0; p < mask.length; p += 1) {
+    if (mask[p] >= 128) {
+      const i = p * 4
+      sum += 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]
+      count += 1
+    }
+  }
+  if (count === 0 || count === mask.length) {
+    return null
+  }
+
+  // A flat color that contrasts with the subject, so an outline can form.
+  const flat = sum / count > 140 ? 38 : 235
+  for (let p = 0; p < mask.length; p += 1) {
+    if (mask[p] < 128) {
+      const i = p * 4
+      pixels[i] = flat
+      pixels[i + 1] = flat
+      pixels[i + 2] = flat
+      pixels[i + 3] = 255
+    }
+  }
+
+  // Final opacity: the mask grown a little (so the outer half of an outline
+  // survives) and feathered by one pixel.
+  const alpha = new Uint8Array(mask)
+  const grow = Math.max(1, Math.round(Math.max(width, height) / 700))
+  dilateMask(alpha, width, height, grow)
+  featherMask(alpha, width, height)
+  return { mask, alpha, flat }
+}
+
+// Smart cutout, step 2, after the cartoon effect has been drawn. Pixels just
+// outside the subject that no outline touched are dropped, so no flat-colored
+// halo is left around the subject.
+function applySubjectAlpha(pixels, subject) {
+  const { mask, alpha, flat } = subject
+  for (let p = 0; p < mask.length; p += 1) {
+    const i = p * 4
+    let opacity = alpha[p]
+    if (mask[p] < 128 && opacity > 0) {
+      const luminance = 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]
+      if (Math.abs(luminance - flat) < 40) {
+        opacity = 0
+      }
+    }
+    if (opacity < pixels[i + 3]) {
+      pixels[i + 3] = opacity
+    }
+  }
+}
+
+// One pass of a 3x3 average: softens the staircase edge of a mask.
+function featherMask(mask, width, height) {
+  const copy = new Uint8Array(mask)
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      let sum = 0
+      for (let ky = -1; ky <= 1; ky += 1) {
+        for (let kx = -1; kx <= 1; kx += 1) {
+          sum += copy[(y + ky) * width + (x + kx)]
+        }
+      }
+      mask[y * width + x] = sum / 9
+    }
+  }
 }
 
 // Makes the plain backdrop transparent: starting from the image border, it

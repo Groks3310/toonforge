@@ -12,6 +12,7 @@ import {
   renderExport,
   validateImageFile,
 } from '../../lib/image-processing/cartoon.js'
+import { MODEL_SIZE, detectSubject, onSegmenterStatus } from '../../lib/ml/segmenter.js'
 import { BackgroundControls } from './BackgroundControls.jsx'
 import { ExportControls } from './ExportControls.jsx'
 import './cartoon-studio.css'
@@ -37,7 +38,8 @@ export function CartoonStudio() {
   const [resultUrl, setResultUrl] = useState('')
   const [framedUrl, setFramedUrl] = useState('')
   const [busy, setBusy] = useState(false)
-  const [removeBackdrop, setRemoveBackdrop] = useState(false)
+  const [cutout, setCutout] = useState('off')
+  const [modelStatus, setModelStatus] = useState('idle')
   const [tolerance, setTolerance] = useState(40)
   const [background, setBackground] = useState({
     type: 'none',
@@ -75,6 +77,10 @@ export function CartoonStudio() {
     }
   }, [framedUrl])
 
+  useEffect(function watchModelStatus() {
+    return onSegmenterStatus(setModelStatus)
+  }, [])
+
   useEffect(function renderCartoon() {
     if (!source?.image) {
       return undefined
@@ -82,9 +88,26 @@ export function CartoonStudio() {
 
     let cancelled = false
     setBusy(true)
-    const timer = window.setTimeout(function run() {
+    const timer = window.setTimeout(async function run() {
       try {
         const frame = drawFramed(source.image, { rotation, zoom })
+        let subject = null
+        if (cutout === 'smart') {
+          try {
+            const data = await detectSubject(source.image, rotation)
+            subject = { data, size: MODEL_SIZE }
+          } catch (problem) {
+            if (!cancelled) {
+              setError(`Smart cutout is not available: ${problem.message} Switched back to the original background.`)
+              setCutout('off')
+              setBusy(false)
+            }
+            return
+          }
+          if (cancelled) {
+            return
+          }
+        }
         const canvas = applyCartoon(source.image, {
           style,
           smooth,
@@ -94,8 +117,9 @@ export function CartoonStudio() {
           contrast,
           rotation,
           zoom,
-          removeBackground: removeBackdrop,
+          removeBackground: cutout === 'plain',
           backdropTolerance: tolerance,
+          subject,
         })
         frame.canvas.toBlob(function framedDone(blob) {
           if (cancelled || !blob) {
@@ -125,7 +149,7 @@ export function CartoonStudio() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [source, style, smooth, edge, levels, saturation, contrast, rotation, zoom, removeBackdrop, tolerance])
+  }, [source, style, smooth, edge, levels, saturation, contrast, rotation, zoom, cutout, tolerance])
 
   // Background changes only redraw the cached cartoon, so they stay fast.
   useEffect(function renderComposite() {
@@ -291,6 +315,10 @@ export function CartoonStudio() {
     }
     setError('')
     try {
+      let subject = null
+      if (cutout === 'smart') {
+        subject = { data: await detectSubject(source.image, rotation), size: MODEL_SIZE }
+      }
       const cartoon = applyCartoon(source.image, {
         style,
         smooth,
@@ -300,8 +328,9 @@ export function CartoonStudio() {
         contrast,
         rotation,
         zoom,
-        removeBackground: removeBackdrop,
+        removeBackground: cutout === 'plain',
         backdropTolerance: tolerance,
+        subject,
         maxSize: 1920,
       })
       const composed = compositeBackground(cartoon, {
@@ -321,6 +350,13 @@ export function CartoonStudio() {
     } catch (problem) {
       setError(problem.message)
     }
+  }
+
+  let statusText = 'Updating cartoon…'
+  if (modelStatus === 'loading') {
+    statusText = 'Loading the cutout model (first use only)…'
+  } else if (modelStatus === 'running') {
+    statusText = 'Finding the subject…'
   }
 
   const exportLabel = EXPORT_FORMATS.find(function find(item) {
@@ -418,7 +454,7 @@ export function CartoonStudio() {
                   <Download size={16} /> Download {exportLabel}
                 </button>
               </div>
-              <p className="empty-copy">{busy ? 'Updating cartoon…' : 'Drag the slider to compare original and cartoon.'}</p>
+              <p className="empty-copy">{busy ? statusText : 'Drag the slider to compare original and cartoon.'}</p>
             </>
           )}
           {error ? <div className="error-box">{error}</div> : null}
@@ -485,11 +521,11 @@ export function CartoonStudio() {
           </label>
 
           <BackgroundControls
-            removeBackdrop={removeBackdrop}
+            cutout={cutout}
             tolerance={tolerance}
             background={background}
             backgroundImageName={backgroundImage ? backgroundImage.name : ''}
-            onRemoveBackdropChange={setRemoveBackdrop}
+            onCutoutChange={setCutout}
             onToleranceChange={setTolerance}
             onBackgroundChange={changeBackground}
             onPickBackgroundImage={handleBackgroundImage}
