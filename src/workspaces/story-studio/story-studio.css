@@ -758,3 +758,30 @@
   border-radius: 20px;
   overflow: hidden;
 }
+/* ---- Mouth and play status ---- */
+.thumb-mouth {
+  position: absolute;
+  left: 22px;
+  top: 25px;
+  width: 8px;
+  height: 2px;
+  border-radius: 4px;
+  background: #5a2b2b;
+}
+
+.thumb-mouth.talking {
+  animation: story-talk 0.28s ease-in-out infinite alternate;
+}
+
+@keyframes story-talk {
+  from {
+    height: 2px;
+  }
+  to {
+    height: 6px;
+  }
+}
+
+.story-play-status {
+  color: var(--text-muted);
+}

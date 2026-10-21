@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, BookOpen, Copy, Plus, Trash2 } from 'lucide-react'
-import { createScene, createStory, loadStories, saveStories } from '../../lib/story-store.js'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, BookOpen, Copy, Download, Play, Plus, Square, Trash2, Upload } from 'lucide-react'
+import { createScene, createStory, loadStories, normalizeStory, saveStories } from '../../lib/story-store.js'
 import { loadCharacters } from '../../lib/character-store.js'
 import './story-studio.css'
 
@@ -13,13 +13,43 @@ const BACKGROUNDS = {
 }
 
 const MOODS = ['hopeful', 'happy', 'sad', 'tense', 'funny']
+const SPEECH_SUPPORTED = typeof window !== 'undefined' && 'speechSynthesis' in window
 
 function backgroundOf(name) {
   return BACKGROUNDS[name] || BACKGROUNDS.sunset
 }
 
+function wait(ms) {
+  return new Promise(function run(resolve) {
+    setTimeout(resolve, ms)
+  })
+}
+
+// Used when the browser cannot speak: estimate how long the text takes to read.
+function readingTime(text) {
+  return Math.max(1500, text.split(/\s+/).length * 400)
+}
+
+// Resolves true when the line finished, false if speech failed or was cancelled.
+function speakLine(text) {
+  return new Promise(function run(resolve) {
+    if (!SPEECH_SUPPORTED) {
+      resolve(false)
+      return
+    }
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.onend = function end() {
+      resolve(true)
+    }
+    utterance.onerror = function fail() {
+      resolve(false)
+    }
+    window.speechSynthesis.speak(utterance)
+  })
+}
+
 // Maps a saved character onto the CSS variables used by .thumb-character.
-function CharacterFigure({ character, large }) {
+function CharacterFigure({ character, large, speaking }) {
   const style = {
     '--skin-tone': character.skinTone,
     '--hair-color': character.hairColor,
@@ -35,6 +65,7 @@ function CharacterFigure({ character, large }) {
     <span className="thumb-character" style={style}>
       <span className="thumb-hair" />
       <span className="thumb-head" />
+      {large ? <span className={speaking ? 'thumb-mouth talking' : 'thumb-mouth'} /> : null}
       <span className="thumb-body" />
     </span>
   )
@@ -49,6 +80,11 @@ export function StoryStudio() {
   const [sceneId, setSceneId] = useState(function pickFirstScene() {
     return stories[0].scenes[0].id
   })
+  const [playing, setPlaying] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
+  const [notice, setNotice] = useState('')
+  const runRef = useRef(0)
+  const fileInputRef = useRef(null)
 
   useEffect(
     function persist() {
@@ -56,6 +92,16 @@ export function StoryStudio() {
     },
     [stories],
   )
+
+  // Stop any speech and playback loop when leaving Story Studio.
+  useEffect(function cleanup() {
+    return function stopOnLeave() {
+      runRef.current += 1
+      if (SPEECH_SUPPORTED) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
 
   function findCharacter(id) {
     return characters.find((item) => item.id === id)
@@ -66,6 +112,50 @@ export function StoryStudio() {
   const sceneIndex = story.scenes.indexOf(scene)
   const look = backgroundOf(scene.background)
   const sceneCharacter = findCharacter(scene.characterId)
+
+  function stopStory() {
+    runRef.current += 1
+    if (SPEECH_SUPPORTED) {
+      window.speechSynthesis.cancel()
+    }
+    setSpeaking(false)
+    setPlaying(false)
+  }
+
+  async function playStory(startIndex) {
+    const token = runRef.current + 1
+    runRef.current = token
+    if (SPEECH_SUPPORTED) {
+      window.speechSynthesis.cancel()
+    }
+    setPlaying(true)
+
+    for (let i = startIndex; i < story.scenes.length; i += 1) {
+      if (runRef.current !== token) return
+      const item = story.scenes[i]
+      setSceneId(item.id)
+      const text = (item.dialogue || '').trim()
+
+      if (text) {
+        setSpeaking(true)
+        const finished = await speakLine(text)
+        setSpeaking(false)
+        if (runRef.current !== token) return
+        if (!finished) {
+          await wait(readingTime(text))
+        }
+      } else {
+        await wait(2000)
+      }
+
+      if (runRef.current !== token) return
+      await wait(400)
+    }
+
+    if (runRef.current === token) {
+      setPlaying(false)
+    }
+  }
 
   function changeStory(change) {
     setStories(function apply(list) {
@@ -86,7 +176,61 @@ export function StoryStudio() {
     })
   }
 
+  function exportStories() {
+    const payload = { app: 'toonforge', type: 'stories', version: 1, stories }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'toonforge-stories.json'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    setNotice('Exported ' + stories.length + (stories.length === 1 ? ' story.' : ' stories.'))
+  }
+
+  function importStories(event) {
+    const file = event.target.files && event.target.files[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setNotice('That file is too large to be a story file.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onerror = function failed() {
+      setNotice('Could not read that file.')
+    }
+    reader.onload = function loaded() {
+      try {
+        const data = JSON.parse(String(reader.result))
+        const list = Array.isArray(data) ? data : data && Array.isArray(data.stories) ? data.stories : null
+        if (!list || list.length === 0) {
+          throw new Error('No stories found in this file.')
+        }
+        const imported = list.map(function fresh(item) {
+          const clean = normalizeStory(item)
+          return {
+            ...clean,
+            id: createStory().id,
+            scenes: clean.scenes.map((s) => ({ ...s, id: createScene().id })),
+          }
+        })
+        stopStory()
+        setStories((previous) => [...previous, ...imported])
+        setStoryId(imported[0].id)
+        setSceneId(imported[0].scenes[0].id)
+        setNotice('Imported ' + imported.length + (imported.length === 1 ? ' story.' : ' stories.'))
+      } catch (error) {
+        setNotice('Could not import: ' + (error.message || 'invalid file.'))
+      }
+    }
+    reader.readAsText(file)
+  }
+
   function addStory() {
+    stopStory()
     const next = createStory({ title: 'Story ' + (stories.length + 1) })
     setStories([...stories, next])
     setStoryId(next.id)
@@ -94,6 +238,7 @@ export function StoryStudio() {
   }
 
   function openStory(id) {
+    stopStory()
     const target = stories.find((item) => item.id === id)
     setStoryId(id)
     setSceneId(target.scenes[0].id)
@@ -101,6 +246,7 @@ export function StoryStudio() {
 
   function deleteStory() {
     if (!window.confirm('Delete "' + story.title + '"?')) return
+    stopStory()
     const rest = stories.filter((item) => item.id !== story.id)
     const next = rest.length > 0 ? rest : [createStory({ title: 'My first story' })]
     setStories(next)
@@ -126,6 +272,7 @@ export function StoryStudio() {
 
   function deleteScene() {
     if (story.scenes.length === 1) return
+    stopStory()
     const rest = story.scenes.filter((item) => item.id !== scene.id)
     changeStory((item) => ({ ...item, scenes: rest }))
     setSceneId(rest[Math.max(0, sceneIndex - 1)].id)
@@ -134,6 +281,7 @@ export function StoryStudio() {
   function moveScene(direction) {
     const target = sceneIndex + direction
     if (target < 0 || target >= story.scenes.length) return
+    stopStory()
     changeStory(function apply(item) {
       const scenes = [...item.scenes]
       const [moved] = scenes.splice(sceneIndex, 1)
@@ -170,6 +318,20 @@ export function StoryStudio() {
               )
             })}
           </div>
+          <div className="story-action-row">
+            <button type="button" className="primary-btn small" onClick={exportStories}>
+              <Download size={14} /> Export
+            </button>
+            <button
+              type="button"
+              className="primary-btn small"
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            >
+              <Upload size={14} /> Import
+            </button>
+            <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={importStories} hidden />
+          </div>
+          {notice ? <small className="story-play-status" role="status">{notice}</small> : null}
         </aside>
 
         <section className="panel story-main-panel">
@@ -236,11 +398,33 @@ export function StoryStudio() {
             </button>
           </div>
 
+          <div className="story-action-row">
+            <button type="button" className="primary-btn small" onClick={() => playStory(0)} disabled={playing}>
+              <Play size={14} /> Play story
+            </button>
+            <button type="button" className="primary-btn small" onClick={() => playStory(sceneIndex)} disabled={playing}>
+              <Play size={14} /> Play from this scene
+            </button>
+            <button type="button" className="primary-btn small" onClick={stopStory} disabled={!playing}>
+              <Square size={14} /> Stop
+            </button>
+          </div>
+          {playing ? (
+            <small className="story-play-status">
+              Playing scene {sceneIndex + 1} of {story.scenes.length}
+            </small>
+          ) : null}
+          {!SPEECH_SUPPORTED ? (
+            <small className="story-play-status">
+              This browser cannot speak text, so scenes will advance on a reading-time estimate.
+            </small>
+          ) : null}
+
           <div
             className="story-stage"
             style={{ background: 'linear-gradient(180deg,' + look.sky1 + ',' + look.sky2 + ')' }}
           >
-            {sceneCharacter ? <CharacterFigure character={sceneCharacter} large /> : null}
+            {sceneCharacter ? <CharacterFigure character={sceneCharacter} large speaking={speaking} /> : null}
             <div
               style={{
                 position: 'absolute',
