@@ -1,93 +1,61 @@
-import {
-  Home,
-  Image,
-  UserRound,
-  Mic,
-  PersonStanding,
-  BookOpen,
-  Clapperboard,
-  Music,
-  Folder,
-  Settings,
-  CircleHelp,
-  Play,
-} from 'lucide-react'
+import { useState } from 'react'
+import { AppShell } from './components/layout/AppShell.jsx'
+import { Dashboard } from './workspaces/dashboard/Dashboard.jsx'
+import { CartoonStudio } from './workspaces/cartoon-studio/CartoonStudio.jsx'
+import { CharacterStudio } from './workspaces/character-studio/CharacterStudio.jsx'
+import { MotionStudio } from './workspaces/motion-studio/MotionStudio.jsx'
+import { StoryStudio } from './workspaces/story-studio/StoryStudio.jsx'
+import { TalkingStudio } from './workspaces/talking-studio/TalkingStudio.jsx'
+import { ComingSoon } from './workspaces/coming-soon/ComingSoon.jsx'
 
-const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: Home, ready: true },
-  { id: 'cartoon', label: 'Cartoon Studio', icon: Image, ready: true },
-  { id: 'character', label: 'Character Studio', icon: UserRound, ready: true },
-  { id: 'motion', label: 'Motion Studio', icon: PersonStanding, ready: true },
-  { id: 'talking', label: 'Talking Studio', icon: Mic, ready: false },
-  { id: 'story', label: 'Story Studio', icon: BookOpen, ready: false },
-  { id: 'video', label: 'Video Studio', icon: Clapperboard, ready: false },
-  { id: 'audio', label: 'Audio Studio', icon: Music, ready: false },
-  { id: 'projects', label: 'My Projects', icon: Folder, ready: false },
-]
-
-const FOOTER = [
-  { id: 'settings', label: 'Settings', icon: Settings, ready: false },
-  { id: 'help', label: 'Help & Support', icon: CircleHelp, ready: false },
-]
-
-export function Sidebar({ workspace, onNavigate, open }) {
-  return (
-    <aside className={open ? 'sidebar open' : 'sidebar'}>
-      <div className="brand">
-        <div className="brand-mark" aria-hidden="true">
-          <Play size={16} fill="currentColor" />
-        </div>
-        <div>
-          <h1>ToonForge</h1>
-          <p>Create · Animate · Share</p>
-        </div>
-      </div>
-
-      <nav className="nav-group" aria-label="Studios">
-        {NAV.map(function renderItem(item) {
-          return (
-            <NavItem
-              key={item.id}
-              item={item}
-              active={workspace === item.id}
-              onNavigate={onNavigate}
-            />
-          )
-        })}
-      </nav>
-
-      <div className="sidebar-footer">
-        <div className="nav-label">Account</div>
-        <nav className="nav-group" aria-label="Account">
-          {FOOTER.map(function renderFooter(item) {
-            return (
-              <NavItem
-                key={item.id}
-                item={item}
-                active={workspace === item.id}
-                onNavigate={onNavigate}
-              />
-            )
-          })}
-        </nav>
-      </div>
-    </aside>
-  )
+const COMING_SOON = {
+  video: {
+    title: 'Video Studio',
+    body: 'The timeline and export tools come after we can preview animation and audio together. Browser export formats will be tested before we promise MP4.',
+  },
+  audio: {
+    title: 'Audio Studio',
+    body: 'Recording, import, trimming, and beat detection will live here. No copyrighted music is bundled.',
+  },
+  projects: {
+    title: 'My Projects',
+    body: 'Projects will save on this device with IndexedDB. Nothing is stored on a server in this version.',
+  },
+  settings: {
+    title: 'Settings',
+    body: 'Theme already lives in the top-right control (Light, Dark, System). More preferences will be added as features exist.',
+  },
+  help: {
+    title: 'Help & Support',
+    body: 'ToonForge runs locally in your browser. Photographs never leave this computer unless you export and share them yourself.',
+  },
 }
 
-function NavItem({ item, active, onNavigate }) {
-  const Icon = item.icon
+export default function App() {
+  const [workspace, setWorkspace] = useState('dashboard')
+
+  function openWorkspace(id) {
+    setWorkspace(id)
+  }
+
+  let content = <Dashboard onNavigate={openWorkspace} />
+  if (workspace === 'cartoon') {
+    content = <CartoonStudio />
+  } else if (workspace === 'character') {
+    content = <CharacterStudio />
+  } else if (workspace === 'motion') {
+    content = <MotionStudio />
+  } else if (workspace === 'story') {
+    content = <StoryStudio />
+  } else if (workspace === 'talking') {
+    content = <TalkingStudio />
+  } else if (COMING_SOON[workspace]) {
+    content = <ComingSoon {...COMING_SOON[workspace]} />
+  }
+
   return (
-    <button
-      type="button"
-      className={active ? 'nav-btn active' : 'nav-btn'}
-      onClick={function click() {
-        onNavigate(item.id)
-      }}
-    >
-      <Icon size={18} />
-      <span>{item.label}</span>
-      {item.ready ? null : <span className="soon">Soon</span>}
-    </button>
+    <AppShell workspace={workspace} onNavigate={openWorkspace}>
+      {content}
+    </AppShell>
   )
 }

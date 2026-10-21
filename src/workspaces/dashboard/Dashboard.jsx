@@ -1,132 +1,93 @@
-import { ArrowRight, BookOpen, Clapperboard, Image, Mic, PersonStanding, Plus, UserRound } from 'lucide-react'
+import {
+  Home,
+  Image,
+  UserRound,
+  Mic,
+  PersonStanding,
+  BookOpen,
+  Clapperboard,
+  Music,
+  Folder,
+  Settings,
+  CircleHelp,
+  Play,
+} from 'lucide-react'
 
-const SHORTCUTS = [
-  {
-    id: 'cartoon',
-    title: 'Photo to Cartoon',
-    body: 'Turn your photos into stylized cartoon art with our local filter.',
-    icon: Image,
-    ready: true,
-  },
-  {
-    id: 'character',
-    title: 'Build Characters',
-    body: 'Create reusable cartoon avatars and save them on this device.',
-    icon: UserRound,
-    ready: true,
-  },
-  {
-    id: 'motion',
-    title: 'Animate Movement',
-    body: 'Preview simple character motions and movement loops in real time.',
-    icon: PersonStanding,
-    ready: true,
-  },
-  {
-    id: 'talking',
-    title: 'Make It Talk',
-    body: 'Use browser speech synthesis, voice recordings, and lip-sync preview.',
-    icon: Mic,
-    ready: true,
-  },
-  {
-    id: 'video',
-    title: 'Create a Video',
-    body: 'Timeline editing will combine scenes, audio, and captions.',
-    icon: Clapperboard,
-    ready: false,
-  },
-  {
-    id: 'story',
-    title: 'Tell a Story',
-    body: 'Multi-scene stories will be built from characters you already have.',
-    icon: BookOpen,
-    ready: false,
-  },
+const NAV = [
+  { id: 'dashboard', label: 'Dashboard', icon: Home, ready: true },
+  { id: 'cartoon', label: 'Cartoon Studio', icon: Image, ready: true },
+  { id: 'character', label: 'Character Studio', icon: UserRound, ready: true },
+  { id: 'motion', label: 'Motion Studio', icon: PersonStanding, ready: true },
+  { id: 'talking', label: 'Talking Studio', icon: Mic, ready: false },
+  { id: 'story', label: 'Story Studio', icon: BookOpen, ready: true },
+  { id: 'video', label: 'Video Studio', icon: Clapperboard, ready: false },
+  { id: 'audio', label: 'Audio Studio', icon: Music, ready: false },
+  { id: 'projects', label: 'My Projects', icon: Folder, ready: false },
 ]
 
-export function Dashboard({ onNavigate }) {
-  return (
-    <div>
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Welcome to ToonForge</p>
-          <h2>Bring your imagination to life</h2>
-          <p>
-            Create cartoons, animate characters, make them talk and move, and turn ideas
-            into videos. We start with a real photo-to-cartoon tool that runs on your computer.
-          </p>
-          <button type="button" className="primary-btn" onClick={function go() { onNavigate('cartoon') }}>
-            <Plus size={16} />
-            New cartoon
-          </button>
-        </div>
-        <div className="hero-art" aria-hidden="true">
-          <div className="hero-portrait" />
-          <div className="hero-note">
-            Your story
-            <br />
-            your way
-          </div>
-        </div>
-      </section>
+const FOOTER = [
+  { id: 'settings', label: 'Settings', icon: Settings, ready: false },
+  { id: 'help', label: 'Help & Support', icon: CircleHelp, ready: false },
+]
 
-      <div className="shortcut-grid">
-        {SHORTCUTS.map(function renderCard(item) {
-          const Icon = item.icon
+export function Sidebar({ workspace, onNavigate, open }) {
+  return (
+    <aside className={open ? 'sidebar open' : 'sidebar'}>
+      <div className="brand">
+        <div className="brand-mark" aria-hidden="true">
+          <Play size={16} fill="currentColor" />
+        </div>
+        <div>
+          <h1>ToonForge</h1>
+          <p>Create · Animate · Share</p>
+        </div>
+      </div>
+
+      <nav className="nav-group" aria-label="Studios">
+        {NAV.map(function renderItem(item) {
           return (
-            <button
+            <NavItem
               key={item.id}
-              type="button"
-              className="shortcut-card"
-              onClick={function go() {
-                onNavigate(item.id)
-              }}
-            >
-              <div className="shortcut-icon">
-                <Icon size={18} />
-              </div>
-              <h3>{item.title}</h3>
-              <p>{item.body}</p>
-              <span className="arrow">
-                <ArrowRight size={14} />
-              </span>
-            </button>
+              item={item}
+              active={workspace === item.id}
+              onNavigate={onNavigate}
+            />
           )
         })}
-      </div>
+      </nav>
 
-      <div className="section-head">
-        <div>
-          <h3>Featured templates</h3>
-          <p>Story templates will appear here when Story Studio is built. Nothing is faked.</p>
-        </div>
+      <div className="sidebar-footer">
+        <div className="nav-label">Account</div>
+        <nav className="nav-group" aria-label="Account">
+          {FOOTER.map(function renderFooter(item) {
+            return (
+              <NavItem
+                key={item.id}
+                item={item}
+                active={workspace === item.id}
+                onNavigate={onNavigate}
+              />
+            )
+          })}
+        </nav>
       </div>
-      <div className="empty-row">
-        <div className="empty-state panel">
-          <p className="empty-copy">
-            No templates yet. The first working studio is Cartoon Studio: upload a photo,
-            apply our cartoon filter, and download the result.
-          </p>
-        </div>
-        <div className="promo-card">
-          <p className="eyebrow">Local first</p>
-          <h3>Your photos stay here</h3>
-          <p className="empty-copy">
-            Processing happens in this browser. There is no account, no cloud upload, and no paid API.
-          </p>
-        </div>
-      </div>
+    </aside>
+  )
+}
 
-      <div className="section-head">
-        <div>
-          <h3>Recent projects</h3>
-          <p>Saved projects will show here after we add local storage.</p>
-        </div>
-      </div>
-      <div className="empty-state panel">
-        <p className="empty-copy">You have not saved a project yet.</p>
-      </div>
-    </div>
+function NavItem({ item, active, onNavigate }) {
+  const Icon = item.icon
+  return (
+    <button
+      type="button"
+      className={active ? 'nav-btn active' : 'nav-btn'}
+      onClick={function click() {
+        onNavigate(item.id)
+      }}
+    >
+      <Icon size={18} />
+      <span>{item.label}</span>
+      {item.ready ? null : <span className="soon">Soon</span>}
+    </button>
   )
 }
