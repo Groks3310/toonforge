@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Mic, MicOff, Play, Square, Volume2 } from 'lucide-react'
+import { Download, Mic, MicOff, Play, Square, Video, Volume2 } from 'lucide-react'
 import { loadCharacters } from '../../lib/character-store.js'
+import { createTextMouth, getAudioStream, watchAudioMouth } from '../../lib/lip-sync.js'
+import {
+  BACKGROUNDS,
+  VIDEO_PRESETS,
+  createCompositor,
+  pickVideoFormat,
+  startRecording,
+} from '../../lib/video-export.js'
+import { MotionViewer } from '../motion-studio/MotionViewer.jsx'
+import '../motion-studio/motion-studio.css'
 import './talking-studio.css'
 
 const DEFAULT_TEXT = 'Hello! I am ready to tell my story with ToonForge.'
@@ -21,11 +31,38 @@ export function TalkingStudio() {
   const [recordingError, setRecordingError] = useState('')
   const [recordedUrl, setRecordedUrl] = useState('')
   const [recordingState, setRecordingState] = useState('Ready to record')
+  const [view, setView] = useState('2d')
+  const [expression, setExpression] = useState('auto')
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportSeconds, setExportSeconds] = useState(0)
+  const [videoUrl, setVideoUrl] = useState('')
+  const [videoExt, setVideoExt] = useState('mp4')
+  const [videoPreset, setVideoPreset] = useState('landscape')
+  const [videoBackground, setVideoBackground] = useState('blue')
+  const [videoFraming, setVideoFraming] = useState('whole')
 
   const mediaRecorderRef = useRef(null)
   const streamRef = useRef(null)
   const chunksRef = useRef([])
   const audioRef = useRef(null)
+  const mouthRef = useRef(null)
+  const textMouthRef = useRef(null)
+  const fallbackRef = useRef(0)
+  const characterRef = useRef(null)
+  const frameRef = useRef(null) // called by the 3D view after each frame while exporting
+  const recorderRef = useRef(null)
+  const exportTimerRef = useRef(0)
+  const finishTimerRef = useRef(0)
+  const talkRef = useRef(0) // current mouth level (0 to 1), read by the 3D robot every frame
+
+  // Sends the mouth level to the 2D mouth element and to the 3D robot. Doing this in React
+  // state would re-render the whole page 60 times a second. null puts the mouth back to rest.
+  function setMouth(level) {
+    talkRef.current = level === null ? 0 : level
+    const mouth = mouthRef.current
+    if (!mouth) return
+    mouth.style.height = level === null ? '' : 4 + level * 22 + 'px'
+  }
 
   useEffect(function hydrateCharacters() {
     const list = loadCharacters()
@@ -52,6 +89,91 @@ export function TalkingStudio() {
     }
   }, [])
 
+  // Blink the 2D character every few seconds. The eyes are squashed with the CSS "scale"
+  // property, which does not clash with any transform your styles already use.
+  useEffect(
+    function blink() {
+      if (view !== '2d') {
+        return undefined
+      }
+      let timer = 0
+
+      function setEyes(closed) {
+        const root = characterRef.current
+        if (!root) return
+        root.querySelectorAll('.talking-eye').forEach(function each(eye) {
+          eye.style.transition = 'scale 80ms'
+          eye.style.scale = closed ? '1 0.1' : ''
+        })
+      }
+
+      function schedule() {
+        timer = setTimeout(function close() {
+          setEyes(true)
+          timer = setTimeout(function open() {
+            setEyes(false)
+            schedule()
+          }, 130)
+        }, 2200 + Math.random() * 3500)
+      }
+
+      schedule()
+      return function cleanup() {
+        clearTimeout(timer)
+        setEyes(false)
+      }
+    },
+    [view],
+  )
+
+  useEffect(function setupTextMouth() {
+    const textMouth = createTextMouth(setMouth)
+    textMouthRef.current = textMouth
+    return function cleanup() {
+      clearTimeout(fallbackRef.current)
+      textMouth.stop()
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
+
+  // Whenever a recording or imported clip is loaded, make the mouth follow its sound.
+  useEffect(
+    function followAudio() {
+      if (!recordedUrl || !audioRef.current) {
+        return undefined
+      }
+      return watchAudioMouth(audioRef.current, setMouth)
+    },
+    [recordedUrl],
+  )
+
+  // Free the finished video's memory when it is replaced or the page is left.
+  useEffect(
+    function cleanupVideoUrl() {
+      return function revoke() {
+        if (videoUrl) {
+          URL.revokeObjectURL(videoUrl)
+        }
+      }
+    },
+    [videoUrl],
+  )
+
+  // If the person leaves mid-recording, stop the recorder and its timers.
+  useEffect(function stopExportOnLeave() {
+    return function cleanup() {
+      clearInterval(exportTimerRef.current)
+      clearTimeout(finishTimerRef.current)
+      frameRef.current = null
+      if (recorderRef.current) {
+        recorderRef.current.stop()
+        recorderRef.current = null
+      }
+    }
+  }, [])
+
   useEffect(
     function cleanupUrls() {
       return function revoke() {
@@ -67,7 +189,7 @@ export function TalkingStudio() {
     return characters.find((item) => item.id === selectedCharacterId) || characters[0] || null
   }, [characters, selectedCharacterId])
 
-  function speakDialogue() {
+  function speakDialogue(onDone) {
     const speech = window.speechSynthesis
     if (!speech) {
       setRecordingError('Speech synthesis is not available in this browser.')
@@ -75,24 +197,59 @@ export function TalkingStudio() {
     }
 
     speech.cancel()
-    const utterance = new SpeechSynthesisUtterance(dialogue || DEFAULT_TEXT)
+    clearTimeout(fallbackRef.current)
+    const text = dialogue || DEFAULT_TEXT
+    const utterance = new SpeechSynthesisUtterance(text)
     utterance.voice = voices[voiceIndex] || null
     utterance.rate = Number(rate)
     utterance.pitch = Number(pitch)
     utterance.volume = Number(volume)
 
+    let sawBoundary = false
+
     utterance.onstart = function start() {
       setIsSpeaking(true)
       setRecordingError('')
+      // Some voices never report word timing. If none arrives, animate across the whole text.
+      fallbackRef.current = setTimeout(function fallback() {
+        if (!sawBoundary && textMouthRef.current) {
+          textMouthRef.current.word(text, Number(rate))
+        }
+      }, 400)
+    }
+
+    utterance.onboundary = function boundary(event) {
+      if (event.name && event.name !== 'word') {
+        return
+      }
+      sawBoundary = true
+      const match = text.slice(event.charIndex).match(/^\S+/)
+      if (match && textMouthRef.current) {
+        textMouthRef.current.word(match[0], Number(rate))
+      }
     }
 
     utterance.onend = function end() {
+      clearTimeout(fallbackRef.current)
+      if (textMouthRef.current) {
+        textMouthRef.current.stop()
+      }
       setIsSpeaking(false)
+      if (typeof onDone === 'function') {
+        onDone()
+      }
     }
 
     utterance.onerror = function fail() {
+      clearTimeout(fallbackRef.current)
+      if (textMouthRef.current) {
+        textMouthRef.current.stop()
+      }
       setIsSpeaking(false)
       setRecordingError('Speech playback could not run on this device.')
+      if (typeof onDone === 'function') {
+        onDone()
+      }
     }
 
     speech.speak(utterance)
@@ -101,7 +258,109 @@ export function TalkingStudio() {
   function stopDialogue() {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel()
-      setIsSpeaking(false)
+    }
+    clearTimeout(fallbackRef.current)
+    if (textMouthRef.current) {
+      textMouthRef.current.stop()
+    }
+    setIsSpeaking(false)
+  }
+
+  function finishExport(immediately) {
+    clearTimeout(finishTimerRef.current)
+
+    function stopNow() {
+      if (recorderRef.current) {
+        recorderRef.current.stop()
+        recorderRef.current = null
+      }
+    }
+
+    if (immediately) {
+      stopDialogue()
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      stopNow()
+    } else {
+      // A short pause at the end so the last word is not cut off.
+      finishTimerRef.current = setTimeout(stopNow, 600)
+    }
+  }
+
+  function handleVideoDone(blob, extension) {
+    frameRef.current = null
+    clearInterval(exportTimerRef.current)
+    setIsExporting(false)
+    if (blob.size === 0) {
+      setRecordingError('The video came out empty. Please try again.')
+      return
+    }
+    setVideoExt(extension)
+    setVideoUrl(URL.createObjectURL(blob))
+  }
+
+  function startVideoExport() {
+    setRecordingError('')
+    if (view !== '3d') {
+      setRecordingError('Switch to the 3D robot to record a video.')
+      return
+    }
+    if (!pickVideoFormat()) {
+      setRecordingError('This browser cannot record video. Try a recent Chrome, Edge, Firefox or Safari.')
+      return
+    }
+
+    const useClip = Boolean(recordedUrl && audioRef.current)
+    const audioStream = useClip ? getAudioStream(audioRef.current) : null
+    if (useClip && !audioStream) {
+      setRecordingError('This browser cannot capture the clip\'s sound for the video.')
+      return
+    }
+
+    const preset = VIDEO_PRESETS[videoPreset]
+    const compositor = createCompositor({
+      width: preset.width,
+      height: preset.height,
+      background: BACKGROUNDS[videoBackground],
+      framing: videoFraming,
+    })
+    frameRef.current = compositor.draw
+
+    try {
+      recorderRef.current = startRecording({
+        canvas: compositor.canvas,
+        audioStream,
+        onDone: handleVideoDone,
+      })
+    } catch (error) {
+      frameRef.current = null
+      setRecordingError(error.message || 'Could not start recording.')
+      return
+    }
+
+    setVideoUrl('')
+    setExportSeconds(0)
+    setIsExporting(true)
+    clearInterval(exportTimerRef.current)
+    exportTimerRef.current = setInterval(function tick() {
+      setExportSeconds((seconds) => seconds + 1)
+    }, 1000)
+
+    if (useClip) {
+      const audio = audioRef.current
+      audio.currentTime = 0
+      audio.addEventListener('ended', function done() {
+        finishExport(false)
+      }, { once: true })
+      audio.play().catch(function fail() {
+        finishExport(true)
+        setRecordingError('The clip could not be played, so nothing was recorded.')
+      })
+    } else {
+      speakDialogue(function done() {
+        finishExport(false)
+      })
     }
   }
 
@@ -246,20 +505,68 @@ export function TalkingStudio() {
             <h3>Preview</h3>
           </div>
 
-          <div className="talking-stage">
-            <div className={`talking-character ${isSpeaking ? 'is-speaking' : ''}`} style={getCharacterStyle()}>
-              <div className="talking-shadow" />
-              <div className="talking-hair" />
-              <div className="talking-head">
-                <span className="talking-eye left" />
-                <span className="talking-eye right" />
-                <span className="talking-mouth" />
-              </div>
-              <div className="talking-body" />
-              <div className="talking-arm left" />
-              <div className="talking-arm right" />
-            </div>
+          <div className="seg" role="group" aria-label="Preview type">
+            <button type="button" className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>
+              3D robot
+            </button>
+            <button type="button" className={view === '2d' ? 'active' : ''} onClick={() => setView('2d')}>
+              2D character
+            </button>
           </div>
+
+          {view === '3d' ? (
+            <MotionViewer
+              clip="Idle"
+              talkRef={talkRef}
+              expression={expression}
+              frameRef={frameRef}
+              colors={
+                selectedCharacter
+                  ? {
+                      outfit: selectedCharacter.outfitColor,
+                      accent: selectedCharacter.accentColor,
+                      eyes: selectedCharacter.eyeColor,
+                    }
+                  : undefined
+              }
+            />
+          ) : (
+            <div className="talking-stage">
+              <div className="talking-character" style={getCharacterStyle()} ref={characterRef}>
+                <div className="talking-shadow" />
+                <div className="talking-hair" />
+                <div className="talking-head">
+                  <span className="talking-eye left" />
+                  <span className="talking-eye right" />
+                  <span className="talking-mouth" ref={mouthRef} />
+                </div>
+                <div className="talking-body" />
+                <div className="talking-arm left" />
+                <div className="talking-arm right" />
+              </div>
+            </div>
+          )}
+
+          {view === '3d' ? (
+            <div className="seg" role="group" aria-label="Robot expression">
+              {[
+                ['auto', 'Auto'],
+                ['neutral', 'Neutral'],
+                ['surprised', 'Surprised'],
+                ['sad', 'Sad'],
+                ['angry', 'Angry'],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={expression === id ? 'active' : ''}
+                  onClick={() => setExpression(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <aside className="panel talking-controls-panel">
@@ -375,7 +682,7 @@ export function TalkingStudio() {
           </div>
 
           <div className="control-row">
-            <button className="primary-btn" type="button" onClick={speakDialogue}>
+            <button className="primary-btn" type="button" onClick={() => speakDialogue()}>
               <Volume2 size={16} />
               Speak
             </button>
@@ -418,6 +725,94 @@ export function TalkingStudio() {
                   Preview clip
                 </button>
               </div>
+            ) : null}
+          </div>
+
+          <div className="recording-box">
+            <div className="recording-header">
+              <strong>Export video</strong>
+              <span>
+                {isExporting ? `Recording... ${exportSeconds}s` : videoUrl ? 'Video ready' : 'Ready to record'}
+              </span>
+            </div>
+
+            {view !== '3d' ? <small>Switch to the 3D robot to record a video.</small> : null}
+
+            <div className="field">
+              <label htmlFor="video-format">Format</label>
+              <select
+                id="video-format"
+                value={videoPreset}
+                disabled={isExporting}
+                onChange={(event) => setVideoPreset(event.target.value)}
+              >
+                {Object.entries(VIDEO_PRESETS).map(([id, preset]) => (
+                  <option key={id} value={id}>{preset.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="video-background">Background</label>
+              <select
+                id="video-background"
+                value={videoBackground}
+                disabled={isExporting}
+                onChange={(event) => setVideoBackground(event.target.value)}
+              >
+                {Object.entries(BACKGROUNDS).map(([id, item]) => (
+                  <option key={id} value={id}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="video-framing">Framing</label>
+              <select
+                id="video-framing"
+                value={videoFraming}
+                disabled={isExporting}
+                onChange={(event) => setVideoFraming(event.target.value)}
+              >
+                <option value="whole">Whole view</option>
+                <option value="close">Close-up (crops the edges)</option>
+              </select>
+            </div>
+
+            <div className="control-row">
+              {!isExporting ? (
+                <button className="primary-btn" type="button" disabled={view !== '3d'} onClick={startVideoExport}>
+                  <Video size={16} />
+                  Record video
+                </button>
+              ) : (
+                <button className="secondary-btn" type="button" onClick={() => finishExport(true)}>
+                  <Square size={16} />
+                  Stop and save
+                </button>
+              )}
+            </div>
+
+            <small>
+              {recordedUrl
+                ? 'The video uses your recorded or imported clip as its sound and ends when the clip ends.'
+                : 'No clip loaded. A browser voice cannot be recorded, so this video will have no sound. Record or import audio to add a voice.'}
+            </small>
+
+            {videoUrl ? (
+              <>
+                <video className="audio-player" controls src={videoUrl} style={{ width: '100%' }} />
+                <a className="primary-btn" href={videoUrl} download={`toonforge-video.${videoExt}`}>
+                  <Download size={16} />
+                  Download video
+                </a>
+                {videoExt === 'webm' ? (
+                  <small>
+                    This browser saved WebM. Many phone apps want MP4, so convert it before posting, or record in
+                    Chrome or Safari for MP4.
+                  </small>
+                ) : null}
+              </>
             ) : null}
           </div>
 

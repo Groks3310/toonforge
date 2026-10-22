@@ -1,90 +1,46 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, BookOpen, Copy, Download, Play, Plus, Square, Trash2, Upload } from 'lucide-react'
-import { createScene, createStory, loadStories, normalizeStory, saveStories } from '../../lib/story-store.js'
+import { Download, Play, Plus, Square, Trash2, Upload } from 'lucide-react'
+import {
+  createCastMember,
+  createLine,
+  createScene,
+  createStory,
+  loadStories,
+  normalizeStory,
+  saveStories,
+} from '../../lib/story-store.js'
 import { loadCharacters } from '../../lib/character-store.js'
+import { createTextMouth } from '../../lib/lip-sync.js'
+import { IconButton } from '../../components/ui/IconButton.jsx'
+import { MOOD_EXPRESSION, backgroundOf } from './story-options.js'
+import { SPEECH_SUPPORTED, pitchFor, readingTime, speakLine, wait } from './story-speech.js'
+import { StagePreview } from './StagePreview.jsx'
+import { SceneFilmstrip } from './SceneFilmstrip.jsx'
+import { SceneInspector } from './SceneInspector.jsx'
+import '../../styles/ui-kit.css'
+import '../motion-studio/motion-studio.css'
 import './story-studio.css'
 
-const BACKGROUNDS = {
-  sunset: { label: 'Sunset', sky1: '#1d2433', sky2: '#ef8a53' },
-  forest: { label: 'Forest', sky1: '#1f4d3a', sky2: '#8fc78a' },
-  night: { label: 'Night', sky1: '#0b1020', sky2: '#3b4a7a' },
-  ocean: { label: 'Ocean', sky1: '#12395c', sky2: '#5fb7d4' },
-  studio: { label: 'Studio', sky1: '#2a2a33', sky2: '#6b6b7a' },
-}
-
-const MOODS = ['hopeful', 'happy', 'sad', 'tense', 'funny']
-const SPEECH_SUPPORTED = typeof window !== 'undefined' && 'speechSynthesis' in window
-
-function backgroundOf(name) {
-  return BACKGROUNDS[name] || BACKGROUNDS.sunset
-}
-
-function wait(ms) {
-  return new Promise(function run(resolve) {
-    setTimeout(resolve, ms)
-  })
-}
-
-// Used when the browser cannot speak: estimate how long the text takes to read.
-function readingTime(text) {
-  return Math.max(1500, text.split(/\s+/).length * 400)
-}
-
-// Resolves true when the line finished, false if speech failed or was cancelled.
-function speakLine(text) {
-  return new Promise(function run(resolve) {
-    if (!SPEECH_SUPPORTED) {
-      resolve(false)
-      return
-    }
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.onend = function end() {
-      resolve(true)
-    }
-    utterance.onerror = function fail() {
-      resolve(false)
-    }
-    window.speechSynthesis.speak(utterance)
-  })
-}
-
-// Maps a saved character onto the CSS variables used by .thumb-character.
-function CharacterFigure({ character, large, speaking }) {
-  const style = {
-    '--skin-tone': character.skinTone,
-    '--hair-color': character.hairColor,
-    '--eye-color': character.eyeColor,
-    '--outfit-color': character.outfitColor,
-  }
-  if (large) {
-    style.bottom = 80
-    style.transform = 'translateX(-50%) scale(2.4)'
-    style.transformOrigin = 'bottom'
-  }
-  return (
-    <span className="thumb-character" style={style}>
-      <span className="thumb-hair" />
-      <span className="thumb-head" />
-      {large ? <span className={speaking ? 'thumb-mouth talking' : 'thumb-mouth'} /> : null}
-      <span className="thumb-body" />
-    </span>
-  )
-}
-
-export function StoryStudio() {
+export function StoryStudio({ initialStoryId = null }) {
   const [characters] = useState(loadCharacters)
   const [stories, setStories] = useState(loadStories)
-  const [storyId, setStoryId] = useState(function pickFirstStory() {
-    return stories[0].id
+  const [storyId, setStoryId] = useState(function pickStory() {
+    return (stories.find((item) => item.id === initialStoryId) || stories[0]).id
   })
-  const [sceneId, setSceneId] = useState(function pickFirstScene() {
-    return stories[0].scenes[0].id
+  const [sceneId, setSceneId] = useState(function pickScene() {
+    return (stories.find((item) => item.id === initialStoryId) || stories[0]).scenes[0].id
   })
+  
   const [playing, setPlaying] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [notice, setNotice] = useState('')
+  const [view, setView] = useState('2d')
+  const [activeLineId, setActiveLineId] = useState(null) // the line being spoken during playback
+  const [selectedLineId, setSelectedLineId] = useState(null) // the line open in the editor
   const runRef = useRef(0)
   const fileInputRef = useRef(null)
+  const talkRef = useRef(0) // mouth level (0 to 1) read by the 3D robot every frame
+  const textMouthRef = useRef(null)
 
   useEffect(
     function persist() {
@@ -92,6 +48,16 @@ export function StoryStudio() {
     },
     [stories],
   )
+
+  useEffect(function setupMouth() {
+    const textMouth = createTextMouth(function setLevel(level) {
+      talkRef.current = level === null ? 0 : level
+    })
+    textMouthRef.current = textMouth
+    return function cleanup() {
+      textMouth.stop()
+    }
+  }, [])
 
   // Stop any speech and playback loop when leaving Story Studio.
   useEffect(function cleanup() {
@@ -103,6 +69,15 @@ export function StoryStudio() {
     }
   }, [])
 
+  useEffect(
+    function clearNotice() {
+      if (!notice) return undefined
+      const timer = setTimeout(() => setNotice(''), 4000)
+      return () => clearTimeout(timer)
+    },
+    [notice],
+  )
+
   function findCharacter(id) {
     return characters.find((item) => item.id === id)
   }
@@ -111,14 +86,59 @@ export function StoryStudio() {
   const scene = story.scenes.find((item) => item.id === sceneId) || story.scenes[0]
   const sceneIndex = story.scenes.indexOf(scene)
   const look = backgroundOf(scene.background)
-  const sceneCharacter = findCharacter(scene.characterId)
+  // Everyone on stage. Someone whose character was deleted is skipped.
+  const castOnStage = scene.cast
+    .map((member) => ({ member, character: findCharacter(member.characterId) }))
+    .filter((entry) => entry.character)
+  const castCharacterIds = [...new Set(scene.cast.map((member) => member.characterId).filter(Boolean))]
+
+  // While a story plays, the spoken line drives the preview. Otherwise the line open in the editor does.
+  const selectedLine = scene.lines.find((line) => line.id === selectedLineId) || scene.lines[0] || null
+  const previewLine = scene.lines.find((line) => line.id === activeLineId) || selectedLine
+  const speakerCharacter = previewLine ? findCharacter(previewLine.characterId) : undefined
+  const speakerEntry = speakerCharacter
+    ? castOnStage.find((entry) => entry.member.characterId === speakerCharacter.id)
+    : undefined
+  const speakerMemberId = speakerEntry ? speakerEntry.member.id : ''
+  const moodFace = MOOD_EXPRESSION[scene.mood] || 'auto'
+
+  // Face order: the line's own face (for the speaker), then the character's default face, then the mood.
+  function faceFor(member) {
+    if (member.id === speakerMemberId && previewLine && previewLine.expression !== 'auto') {
+      return previewLine.expression
+    }
+    return member.face !== 'auto' ? member.face : moodFace
+  }
+
+  const actors = castOnStage.map((entry) => ({
+    id: entry.member.id,
+    colors: {
+      outfit: entry.character.outfitColor,
+      accent: entry.character.accentColor,
+      eyes: entry.character.eyeColor,
+    },
+    expression: faceFor(entry.member),
+  }))
+
+  const caption =
+    previewLine && previewLine.text.trim()
+      ? { speaker: speakerCharacter ? speakerCharacter.name : 'Narrator', text: previewLine.text.trim() }
+      : null
+
+  function stopMouth() {
+    if (textMouthRef.current) {
+      textMouthRef.current.stop()
+    }
+  }
 
   function stopStory() {
     runRef.current += 1
     if (SPEECH_SUPPORTED) {
       window.speechSynthesis.cancel()
     }
+    stopMouth()
     setSpeaking(false)
+    setActiveLineId(null)
     setPlaying(false)
   }
 
@@ -130,22 +150,51 @@ export function StoryStudio() {
     }
     setPlaying(true)
 
+    const mouthHandlers = {
+      onWord: function onWord(word) {
+        if (textMouthRef.current) textMouthRef.current.word(word, 1)
+      },
+      onFallback: function onFallback(text) {
+        if (textMouthRef.current) textMouthRef.current.word(text, 1)
+      },
+    }
+
     for (let i = startIndex; i < story.scenes.length; i += 1) {
       if (runRef.current !== token) return
       const item = story.scenes[i]
       setSceneId(item.id)
-      const text = (item.dialogue || '').trim()
 
-      if (text) {
-        setSpeaking(true)
-        const finished = await speakLine(text)
-        setSpeaking(false)
-        if (runRef.current !== token) return
-        if (!finished) {
-          await wait(readingTime(text))
-        }
-      } else {
+      if (item.lines.length === 0) {
+        setActiveLineId(null)
         await wait(2000)
+      }
+
+      for (let j = 0; j < item.lines.length; j += 1) {
+        if (runRef.current !== token) return
+        const line = item.lines[j]
+        const text = line.text.trim()
+        const speaker = findCharacter(line.characterId)
+        setActiveLineId(line.id)
+
+        if (text) {
+          // Narrator lines are spoken without moving a character's mouth.
+          setSpeaking(Boolean(speaker))
+          const finished = await speakLine(text, speaker ? mouthHandlers : null, pitchFor(line.characterId))
+          stopMouth()
+          setSpeaking(false)
+          if (runRef.current !== token) return
+          if (!finished) {
+            // No voice available: move the mouth across the text while we wait.
+            if (speaker && textMouthRef.current) textMouthRef.current.word(text, 1)
+            await wait(readingTime(text))
+            stopMouth()
+          }
+        } else {
+          await wait(800)
+        }
+
+        if (runRef.current !== token) return
+        await wait(Math.max(0.2, line.pause) * 1000)
       }
 
       if (runRef.current !== token) return
@@ -153,6 +202,7 @@ export function StoryStudio() {
     }
 
     if (runRef.current === token) {
+      setActiveLineId(null)
       setPlaying(false)
     }
   }
@@ -173,6 +223,59 @@ export function StoryStudio() {
           return s.id === scene.id ? { ...s, ...patch } : s
         }),
       }
+    })
+  }
+
+  // Who is on stage. characterId and characterIds are kept in step for older data.
+  function changeCast(change) {
+    const cast = change(scene.cast)
+    const ids = [...new Set(cast.map((member) => member.characterId).filter(Boolean))]
+    changeScene({ cast, characterId: ids[0] || '', characterIds: ids })
+  }
+
+  function updateCast(id, patch) {
+    changeCast((cast) => cast.map((member) => (member.id === id ? { ...member, ...patch } : member)))
+  }
+
+  function addCastMember() {
+    // Pick a character who is not on stage yet, if there is one.
+    const next = characters.find((item) => !scene.cast.some((member) => member.characterId === item.id)) || characters[0]
+    changeCast((cast) => [...cast, createCastMember({ characterId: next ? next.id : '' })])
+  }
+
+  function removeCastMember(id) {
+    changeCast((cast) => cast.filter((member) => member.id !== id))
+  }
+
+  // Dialogue lines. scene.dialogue is kept equal to all the lines joined together.
+  function changeLines(change) {
+    const lines = change(scene.lines)
+    changeScene({ lines, dialogue: lines.map((line) => line.text.trim()).filter(Boolean).join(' ') })
+  }
+
+  function updateLine(id, patch) {
+    changeLines((lines) => lines.map((line) => (line.id === id ? { ...line, ...patch } : line)))
+  }
+
+  function addLine() {
+    const last = scene.lines[scene.lines.length - 1]
+    const line = createLine({ characterId: last ? last.characterId : castCharacterIds[0] || '' })
+    changeLines((lines) => [...lines, line])
+    setSelectedLineId(line.id)
+  }
+
+  function removeLine(id) {
+    changeLines((lines) => lines.filter((line) => line.id !== id))
+  }
+
+  function moveLine(index, direction) {
+    const target = index + direction
+    if (target < 0 || target >= scene.lines.length) return
+    changeLines(function apply(lines) {
+      const next = [...lines]
+      const [moved] = next.splice(index, 1)
+      next.splice(target, 0, moved)
+      return next
     })
   }
 
@@ -272,6 +375,7 @@ export function StoryStudio() {
 
   function deleteScene() {
     if (story.scenes.length === 1) return
+    if (!window.confirm('Delete "' + scene.title + '"?')) return
     stopStory()
     const rest = story.scenes.filter((item) => item.id !== scene.id)
     changeStory((item) => ({ ...item, scenes: rest }))
@@ -291,200 +395,125 @@ export function StoryStudio() {
   }
 
   return (
-    <div className="story-studio">
-      <div className="story-layout">
-        <aside className="panel story-sidebar-panel">
-          <div className="story-sidebar-toolbar">
-            <h3>Stories</h3>
-            <button type="button" className="primary-btn small" onClick={addStory}>
-              <Plus size={14} /> New
-            </button>
-          </div>
-          <div className="story-list">
-            {stories.map(function renderStory(item) {
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={item.id === story.id ? 'story-card active' : 'story-card'}
-                  onClick={() => openStory(item.id)}
-                >
-                  <span className="story-card-icon"><BookOpen size={16} /></span>
-                  <span className="story-card-copy">
-                    <strong>{item.title}</strong>
-                    <small>{item.scenes.length} scenes</small>
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-          <div className="story-action-row">
-            <button type="button" className="primary-btn small" onClick={exportStories}>
-              <Download size={14} /> Export
-            </button>
-            <button
-              type="button"
-              className="primary-btn small"
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
-            >
-              <Upload size={14} /> Import
-            </button>
-            <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={importStories} hidden />
-          </div>
-          {notice ? <small className="story-play-status" role="status">{notice}</small> : null}
-        </aside>
+    <div className="ss">
+      <header className="panel ss-header">
+        <input
+          className="ss-title-input"
+          aria-label="Story title"
+          value={story.title}
+          onChange={(event) => changeStory((item) => ({ ...item, title: event.target.value }))}
+        />
+        <div className="ss-header-actions">
+          <select
+            className="ss-control ss-select"
+            aria-label="Choose a story"
+            value={story.id}
+            onChange={(event) => openStory(event.target.value)}
+          >
+            {stories.map((item) => (
+              <option key={item.id} value={item.id}>{item.title}</option>
+            ))}
+          </select>
+          <button type="button" className="tf-btn" onClick={addStory}>
+            <Plus size={16} /> New story
+          </button>
+          <IconButton label="Export all stories" onClick={exportStories}>
+            <Download size={16} />
+          </IconButton>
+          <IconButton label="Import stories" onClick={() => fileInputRef.current && fileInputRef.current.click()}>
+            <Upload size={16} />
+          </IconButton>
+          <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={importStories} hidden />
+          <IconButton label="Delete story" danger onClick={deleteStory}>
+            <Trash2 size={16} />
+          </IconButton>
+        </div>
+      </header>
 
-        <section className="panel story-main-panel">
-          <div className="story-main-header">
-            <div className="editable-name">
-              <label htmlFor="story-title">Story title</label>
-              <input
-                id="story-title"
-                value={story.title}
-                onChange={(event) => changeStory((item) => ({ ...item, title: event.target.value }))}
-              />
+      {notice ? (
+        <div className="ss-notice" role="status">{notice}</div>
+      ) : null}
+
+      <div className="ss-body">
+        <section className="ss-main">
+          <StagePreview
+            view={view}
+            look={look}
+            cast={castOnStage}
+            actors={actors}
+            speakerMemberId={speakerMemberId}
+            speaking={speaking}
+            talkRef={talkRef}
+            caption={caption}
+            hasCharacters={characters.length > 0}
+          />
+
+          <div className="ss-transport">
+            {playing ? (
+              <button type="button" className="tf-btn tf-btn--primary" onClick={stopStory}>
+                <Square size={16} /> Stop
+              </button>
+            ) : (
+              <>
+                <button type="button" className="tf-btn tf-btn--primary" onClick={() => playStory(0)}>
+                  <Play size={16} /> Play story
+                </button>
+                <button type="button" className="tf-btn" onClick={() => playStory(sceneIndex)}>
+                  <Play size={16} /> From scene {sceneIndex + 1}
+                </button>
+              </>
+            )}
+            <span className="ss-status" role="status">
+              {playing
+                ? 'Playing scene ' + (sceneIndex + 1) + ' of ' + story.scenes.length
+                : story.scenes.length + (story.scenes.length === 1 ? ' scene' : ' scenes')}
+            </span>
+            <span className="ss-transport-spacer" />
+            <div className="seg" role="group" aria-label="Preview type">
+              <button type="button" className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>
+                3D robot
+              </button>
+              <button type="button" className={view === '2d' ? 'active' : ''} onClick={() => setView('2d')}>
+                2D character
+              </button>
             </div>
-            <button type="button" className="primary-btn small" onClick={deleteStory}>
-              <Trash2 size={14} /> Delete story
-            </button>
           </div>
-
-          <div className="story-scene-list">
-            {story.scenes.map(function renderScene(item, index) {
-              const itemLook = backgroundOf(item.background)
-              const itemCharacter = findCharacter(item.characterId)
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={item.id === scene.id ? 'story-scene-card active' : 'story-scene-card'}
-                  onClick={() => setSceneId(item.id)}
-                >
-                  <span
-                    className="scene-thumb"
-                    style={{ background: 'linear-gradient(135deg,' + itemLook.sky1 + ',' + itemLook.sky2 + ')' }}
-                  >
-                    {itemCharacter ? <CharacterFigure character={itemCharacter} /> : null}
-                  </span>
-                  <span className="scene-copy">
-                    <strong>{index + 1}. {item.title}</strong>
-                    <small>{item.mood}</small>
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="story-action-row">
-            <button type="button" className="primary-btn small" onClick={addScene}>
-              <Plus size={14} /> Add scene
-            </button>
-            <button type="button" className="primary-btn small" onClick={duplicateScene}>
-              <Copy size={14} /> Duplicate
-            </button>
-            <button type="button" className="primary-btn small" onClick={() => moveScene(-1)} disabled={sceneIndex === 0}>
-              <ArrowUp size={14} /> Move up
-            </button>
-            <button
-              type="button"
-              className="primary-btn small"
-              onClick={() => moveScene(1)}
-              disabled={sceneIndex === story.scenes.length - 1}
-            >
-              <ArrowDown size={14} /> Move down
-            </button>
-            <button type="button" className="primary-btn small" onClick={deleteScene} disabled={story.scenes.length === 1}>
-              <Trash2 size={14} /> Delete scene
-            </button>
-          </div>
-
-          <div className="story-action-row">
-            <button type="button" className="primary-btn small" onClick={() => playStory(0)} disabled={playing}>
-              <Play size={14} /> Play story
-            </button>
-            <button type="button" className="primary-btn small" onClick={() => playStory(sceneIndex)} disabled={playing}>
-              <Play size={14} /> Play from this scene
-            </button>
-            <button type="button" className="primary-btn small" onClick={stopStory} disabled={!playing}>
-              <Square size={14} /> Stop
-            </button>
-          </div>
-          {playing ? (
-            <small className="story-play-status">
-              Playing scene {sceneIndex + 1} of {story.scenes.length}
-            </small>
-          ) : null}
           {!SPEECH_SUPPORTED ? (
-            <small className="story-play-status">
+            <small className="ss-status">
               This browser cannot speak text, so scenes will advance on a reading-time estimate.
             </small>
           ) : null}
 
-          <div
-            className="story-stage"
-            style={{ background: 'linear-gradient(180deg,' + look.sky1 + ',' + look.sky2 + ')' }}
-          >
-            {sceneCharacter ? <CharacterFigure character={sceneCharacter} large speaking={speaking} /> : null}
-            <div
-              style={{
-                position: 'absolute',
-                left: 16,
-                right: 16,
-                bottom: 16,
-                padding: '12px 16px',
-                borderRadius: 14,
-                background: 'rgba(0,0,0,0.55)',
-                color: '#fff',
-              }}
-            >
-              {scene.dialogue || 'No dialogue yet.'}
-            </div>
-          </div>
+          <SceneFilmstrip
+            scenes={story.scenes}
+            selectedId={scene.id}
+            backgroundOf={backgroundOf}
+            findCharacter={findCharacter}
+            onSelect={setSceneId}
+            onAdd={addScene}
+            onDuplicate={duplicateScene}
+            onMove={moveScene}
+            onDelete={deleteScene}
+          />
         </section>
 
-        <aside className="panel story-controls-panel">
-          <h3>Scene {sceneIndex + 1}</h3>
-          <div className="field">
-            <label htmlFor="scene-title">Title</label>
-            <input id="scene-title" value={scene.title} onChange={(event) => changeScene({ title: event.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="scene-bg">Background</label>
-            <select id="scene-bg" value={scene.background} onChange={(event) => changeScene({ background: event.target.value })}>
-              {Object.keys(BACKGROUNDS).map((key) => (
-                <option key={key} value={key}>{BACKGROUNDS[key].label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="scene-character">Character</label>
-            <select id="scene-character" value={scene.characterId} onChange={(event) => changeScene({ characterId: event.target.value })}>
-              <option value="">None</option>
-              {characters.map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
-              ))}
-              {scene.characterId && !sceneCharacter ? (
-                <option value={scene.characterId}>Deleted character</option>
-              ) : null}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="scene-mood">Mood</label>
-            <select id="scene-mood" value={scene.mood} onChange={(event) => changeScene({ mood: event.target.value })}>
-              {MOODS.map((mood) => (
-                <option key={mood} value={mood}>{mood}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="scene-dialogue">Dialogue</label>
-            <textarea id="scene-dialogue" value={scene.dialogue} onChange={(event) => changeScene({ dialogue: event.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="scene-notes">Notes</label>
-            <textarea id="scene-notes" value={scene.notes} onChange={(event) => changeScene({ notes: event.target.value })} />
-          </div>
-        </aside>
+        <SceneInspector
+          scene={scene}
+          characters={characters}
+          findCharacter={findCharacter}
+          castCharacterIds={castCharacterIds}
+          activeLineId={activeLineId}
+          selectedLineId={selectedLine ? selectedLine.id : null}
+          onSelectLine={setSelectedLineId}
+          onChangeScene={changeScene}
+          onUpdateCast={updateCast}
+          onAddCast={addCastMember}
+          onRemoveCast={removeCastMember}
+          onUpdateLine={updateLine}
+          onAddLine={addLine}
+          onRemoveLine={removeLine}
+          onMoveLine={moveLine}
+        />
       </div>
     </div>
   )

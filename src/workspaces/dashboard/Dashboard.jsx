@@ -1,51 +1,63 @@
-import { ArrowRight, BookOpen, Clapperboard, Image, Mic, PersonStanding, Plus, UserRound } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowRight, BookOpen, CircleHelp, Image, Mic, PersonStanding, Plus, Settings as SettingsIcon, UserRound } from 'lucide-react'
+import { hasSavedStories, loadStories } from '../../lib/story-store.js'
+import '../../styles/ui-kit.css'
+import './dashboard-extras.css'
 
+// Only studios that work are listed. Add a card here when a new studio is finished.
 const SHORTCUTS = [
   {
     id: 'cartoon',
     title: 'Photo to Cartoon',
-    body: 'Turn your photos into stylized cartoon art with our local filter.',
+    body: 'Turn a photo into stylized cartoon art, with background cutout. It runs on your computer.',
     icon: Image,
-    ready: true,
   },
   {
     id: 'character',
     title: 'Build Characters',
-    body: 'Create reusable cartoon avatars and save them on this device.',
+    body: 'Create reusable characters and save them on this device.',
     icon: UserRound,
-    ready: true,
   },
   {
     id: 'motion',
     title: 'Animate Movement',
-    body: 'Preview simple character motions and movement loops in real time.',
+    body: 'Preview movements on a 3D robot, then chain them into sequences.',
     icon: PersonStanding,
-    ready: true,
   },
   {
     id: 'talking',
     title: 'Make It Talk',
-    body: 'Use browser speech synthesis, voice recordings, and lip-sync preview.',
+    body: 'Type or record dialogue, hear it spoken, and watch the mouth move.',
     icon: Mic,
-    ready: true,
-  },
-  {
-    id: 'video',
-    title: 'Create a Video',
-    body: 'Timeline editing will combine scenes, audio, and captions.',
-    icon: Clapperboard,
-    ready: false,
   },
   {
     id: 'story',
     title: 'Tell a Story',
-    body: 'Multi-scene stories will be built from characters you already have.',
+    body: 'Build multi-scene stories with a cast, dialogue and spoken playback.',
     icon: BookOpen,
-    ready: false,
   },
 ]
 
-export function Dashboard({ onNavigate }) {
+const VISIBLE_STORIES = 4
+
+function plural(count, word) {
+  return count + ' ' + word + (count === 1 ? '' : 's')
+}
+
+export function Dashboard({ onNavigate, onOpenStory }) {
+  // Shows nothing until Story Studio has saved something, so new users see an empty state.
+  const [stories] = useState(function read() {
+    return hasSavedStories() ? loadStories() : []
+  })
+
+  function openStory(id) {
+    if (onOpenStory) {
+      onOpenStory(id)
+    } else {
+      onNavigate('story')
+    }
+  }
+
   return (
     <div>
       <section className="hero">
@@ -53,13 +65,30 @@ export function Dashboard({ onNavigate }) {
           <p className="eyebrow">Welcome to ToonForge</p>
           <h2>Bring your imagination to life</h2>
           <p>
-            Create cartoons, animate characters, make them talk and move, and turn ideas
-            into videos. We start with a real photo-to-cartoon tool that runs on your computer.
+            Turn photos into cartoons, build characters, animate them, make them talk, and put
+            them together in stories. Everything runs in this browser, on your computer.
           </p>
-          <button type="button" className="primary-btn" onClick={function go() { onNavigate('cartoon') }}>
-            <Plus size={16} />
-            New cartoon
-          </button>
+          <div className="hero-actions">
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={function go() {
+                onNavigate('story')
+              }}
+            >
+              <Plus size={16} />
+              Start a story
+            </button>
+            <button
+              type="button"
+              className="tf-btn"
+              onClick={function go() {
+                onNavigate('cartoon')
+              }}
+            >
+              New cartoon
+            </button>
+          </div>
         </div>
         <div className="hero-art" aria-hidden="true">
           <div className="hero-portrait" />
@@ -98,17 +127,61 @@ export function Dashboard({ onNavigate }) {
 
       <div className="section-head">
         <div>
-          <h3>Featured templates</h3>
-          <p>Story templates will appear here when Story Studio is built. Nothing is faked.</p>
+          <h3>Your stories</h3>
+          <p>Stories are saved in this browser. Use Export in Story Studio to back them up.</p>
         </div>
       </div>
       <div className="empty-row">
-        <div className="empty-state panel">
-          <p className="empty-copy">
-            No templates yet. The first working studio is Cartoon Studio: upload a photo,
-            apply our cartoon filter, and download the result.
-          </p>
-        </div>
+        {stories.length === 0 ? (
+          <div className="empty-state panel">
+            <p className="empty-copy">You have not started a story yet.</p>
+            <button
+              type="button"
+              className="tf-btn tf-btn--primary"
+              onClick={function go() {
+                onNavigate('story')
+              }}
+            >
+              <Plus size={16} />
+              Start a story
+            </button>
+          </div>
+        ) : (
+          <div className="panel dash-stories">
+            <ul className="dash-story-list">
+              {stories.slice(0, VISIBLE_STORIES).map(function renderStory(story) {
+                const lineCount = story.scenes.reduce((sum, scene) => sum + scene.lines.length, 0)
+                return (
+                  <li key={story.id}>
+                    <button
+                      type="button"
+                      className="dash-story"
+                      onClick={function open() {
+                        openStory(story.id)
+                      }}
+                    >
+                      <span className="dash-story-icon">
+                        <BookOpen size={16} />
+                      </span>
+                      <span className="dash-story-copy">
+                        <strong>{story.title}</strong>
+                        <small>
+                          {plural(story.scenes.length, 'scene')} &middot; {plural(lineCount, 'line')}
+                        </small>
+                      </span>
+                      <ArrowRight size={14} />
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            {stories.length > VISIBLE_STORIES ? (
+              <p className="dash-more">
+                and {stories.length - VISIBLE_STORIES} more in Story Studio
+              </p>
+            ) : null}
+          </div>
+        )}
         <div className="promo-card">
           <p className="eyebrow">Local first</p>
           <h3>Your photos stay here</h3>
@@ -118,14 +191,25 @@ export function Dashboard({ onNavigate }) {
         </div>
       </div>
 
-      <div className="section-head">
-        <div>
-          <h3>Recent projects</h3>
-          <p>Saved projects will show here after we add local storage.</p>
-        </div>
-      </div>
-      <div className="empty-state panel">
-        <p className="empty-copy">You have not saved a project yet.</p>
+            <div className="dash-footer-links">
+        <button
+          type="button"
+          className="tf-btn"
+          onClick={function go() {
+            onNavigate('settings')
+          }}
+        >
+          <SettingsIcon size={16} /> Settings and backup
+        </button>
+        <button
+          type="button"
+          className="tf-btn"
+          onClick={function go() {
+            onNavigate('help')
+          }}
+        >
+          <CircleHelp size={16} /> Help
+        </button>
       </div>
     </div>
   )

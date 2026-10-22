@@ -24,7 +24,7 @@ function disposeTree(root) {
   })
 }
 
-export function MotionViewer({ clip, speed = 1, paused = false, loop = true, restart = 0, onReady })  {
+export function MotionViewer({ clip, speed = 1, paused = false, loop = true, restart = 0, onReady }) {
   const mountRef = useRef(null)
   const apiRef = useRef(null)
   const latest = useRef({ clip, speed, paused, loop, onReady })
@@ -162,7 +162,7 @@ export function MotionViewer({ clip, speed = 1, paused = false, loop = true, res
         mixer.stopAllAction()
       }
       disposeTree(scene)
-       renderer.forceContextLoss()
+      renderer.forceContextLoss()
       renderer.dispose()
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement)
@@ -176,7 +176,7 @@ export function MotionViewer({ clip, speed = 1, paused = false, loop = true, res
         apiRef.current.play(clip, loop)
       }
     },
-    [clip, loop],
+    [clip, loop, restart],
   )
 
   useEffect(

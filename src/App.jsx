@@ -6,6 +6,8 @@ import { CharacterStudio } from './workspaces/character-studio/CharacterStudio.j
 import { MotionStudio } from './workspaces/motion-studio/MotionStudio.jsx'
 import { TalkingStudio } from './workspaces/talking-studio/TalkingStudio.jsx'
 import { StoryStudio } from './workspaces/story-studio/StoryStudio.jsx'
+import { Settings } from './workspaces/settings/Settings.jsx'
+import { Help } from './workspaces/help/Help.jsx'
 import { ComingSoon } from './workspaces/coming-soon/ComingSoon.jsx'
 
 const COMING_SOON = {
@@ -21,24 +23,23 @@ const COMING_SOON = {
     title: 'My Projects',
     body: 'Projects will save on this device with IndexedDB. Nothing is stored on a server in this version.',
   },
-  settings: {
-    title: 'Settings',
-    body: 'Theme already lives in the top-right control (Light, Dark, System). More preferences will be added as features exist.',
-  },
-  help: {
-    title: 'Help & Support',
-    body: 'ToonForge runs locally in your browser. Photographs never leave this computer unless you export and share them yourself.',
-  },
 }
 
 export default function App() {
   const [workspace, setWorkspace] = useState('dashboard')
+  const [openStoryId, setOpenStoryId] = useState(null)
 
   function openWorkspace(id) {
+    setOpenStoryId(null)
     setWorkspace(id)
   }
 
-  let content = <Dashboard onNavigate={openWorkspace} />
+  function openStory(id) {
+    setOpenStoryId(id)
+    setWorkspace('story')
+  }
+
+  let content = <Dashboard onNavigate={openWorkspace} onOpenStory={openStory} />
   if (workspace === 'cartoon') {
     content = <CartoonStudio />
   } else if (workspace === 'character') {
@@ -48,7 +49,11 @@ export default function App() {
   } else if (workspace === 'talking') {
     content = <TalkingStudio />
   } else if (workspace === 'story') {
-    content = <StoryStudio />
+    content = <StoryStudio initialStoryId={openStoryId} />
+  } else if (workspace === 'settings') {
+    content = <Settings />
+  } else if (workspace === 'help') {
+    content = <Help />
   } else if (COMING_SOON[workspace]) {
     content = <ComingSoon {...COMING_SOON[workspace]} />
   }

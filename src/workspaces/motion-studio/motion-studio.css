@@ -232,3 +232,87 @@
   align-items: center;
   gap: 8px;
 }
+.motion-sequence-panel {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.motion-sequence-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.motion-sequence-head .field {
+  flex: 1;
+  min-width: 180px;
+}
+
+.motion-sequence-head select,
+.motion-sequence-head input,
+.motion-step select {
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.motion-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.motion-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.motion-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+
+.motion-step.active {
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+
+.motion-step-number {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--gold-dim);
+  color: var(--gold);
+  font-size: 0.8rem;
+}
+
+.motion-step-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.motion-sequence-status {
+  color: var(--text-muted);
+}

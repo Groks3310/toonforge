@@ -13,6 +13,8 @@ import {
   Play,
 } from 'lucide-react'
 
+// Items with ready: false stay in the list, but only finished studios are shown.
+// Flip an item to ready: true when its workspace works.
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: Home, ready: true },
   { id: 'cartoon', label: 'Cartoon Studio', icon: Image, ready: true },
@@ -26,11 +28,13 @@ const NAV = [
 ]
 
 const FOOTER = [
-  { id: 'settings', label: 'Settings', icon: Settings, ready: false },
-  { id: 'help', label: 'Help & Support', icon: CircleHelp, ready: false },
+  { id: 'settings', label: 'Settings', icon: Settings, ready: true },
+  { id: 'help', label: 'Help & Support', icon: CircleHelp, ready: true },
 ]
-
 export function Sidebar({ workspace, onNavigate, open }) {
+  const studios = NAV.filter((item) => item.ready)
+  const footer = FOOTER.filter((item) => item.ready)
+
   return (
     <aside className={open ? 'sidebar open' : 'sidebar'}>
       <div className="brand">
@@ -44,7 +48,7 @@ export function Sidebar({ workspace, onNavigate, open }) {
       </div>
 
       <nav className="nav-group" aria-label="Studios">
-        {NAV.map(function renderItem(item) {
+        {studios.map(function renderItem(item) {
           return (
             <NavItem
               key={item.id}
@@ -56,21 +60,23 @@ export function Sidebar({ workspace, onNavigate, open }) {
         })}
       </nav>
 
-      <div className="sidebar-footer">
-        <div className="nav-label">Account</div>
-        <nav className="nav-group" aria-label="Account">
-          {FOOTER.map(function renderFooter(item) {
-            return (
-              <NavItem
-                key={item.id}
-                item={item}
-                active={workspace === item.id}
-                onNavigate={onNavigate}
-              />
-            )
-          })}
-        </nav>
-      </div>
+      {footer.length > 0 ? (
+        <div className="sidebar-footer">
+          <div className="nav-label">Account</div>
+          <nav className="nav-group" aria-label="Account">
+            {footer.map(function renderFooter(item) {
+              return (
+                <NavItem
+                  key={item.id}
+                  item={item}
+                  active={workspace === item.id}
+                  onNavigate={onNavigate}
+                />
+              )
+            })}
+          </nav>
+        </div>
+      ) : null}
     </aside>
   )
 }
@@ -87,7 +93,6 @@ function NavItem({ item, active, onNavigate }) {
     >
       <Icon size={18} />
       <span>{item.label}</span>
-      {item.ready ? null : <span className="soon">Soon</span>}
     </button>
   )
 }
